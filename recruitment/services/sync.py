@@ -719,45 +719,67 @@ def run_sync_job(sync_job, client):
             "finished_at",
         ]
     )
+    has_changes = bool(
+        sync_job.total_count > 0
+        or sync_job.success_count > 0
+        or sync_job.metadata.get("applications", 0)
+        or sync_job.metadata.get("positions", 0)
+        or sync_job.metadata.get("new_positions", 0)
+        or sync_job.metadata.get("updated_position_jds", 0)
+        or sync_job.metadata.get("resume_file_updates", 0)
+        or sync_job.metadata.get("initial_rule_tasks_created", 0)
+        or sync_job.failure_count > 0
+        or sync_job.error_message
+        or sync_job.status not in {SyncJob.Status.SUCCESS, SyncJob.Status.PARTIAL}
+    )
+    is_scheduled = (sync_job.requested_by_id is None)
+
+    if is_scheduled and not has_changes and sync_job.status == SyncJob.Status.SUCCESS:
+        job_pk = sync_job.pk
+        sync_job.delete()
+        sync_job.pk = job_pk
+        return sync_job
+
     if sync_job.status in {SyncJob.Status.SUCCESS, SyncJob.Status.PARTIAL}:
         for initialization_id in initial_rule_task_ids:
             dispatch_task(
                 execute_position_rule_initialization,
                 initialization_id,
             )
-        for user in User.objects.filter(is_active=True):
-            configuration_message = ""
-            if sync_job.metadata.get("new_positions") or sync_job.metadata.get(
-                "updated_position_jds"
-            ) or sync_job.metadata.get("initial_rule_tasks_created"):
-                configuration_message = (
-                    f" 新岗位 {sync_job.metadata.get('new_positions', 0)} 个，"
-                    f"岗位说明更新 {sync_job.metadata.get('updated_position_jds', 0)} 个，"
-                    f"已创建岗位初始化任务 "
-                    f"{sync_job.metadata.get('initial_rule_tasks_created', 0)} 个。"
-                )
-                if sync_job.metadata.get("updated_position_jds"):
-                    configuration_message += " 请前往岗位配置处理。"
-            notify(
-                user,
-                "北森同步完成",
-                (
-                    f"同步候选人 {sync_job.success_count} 人，"
-                    f"新增简历 {sync_job.metadata.get('resume_file_updates', 0)} 份，"
-                    f"问题 {sync_job.failure_count} 项。"
-                    f"{configuration_message}"
-                ),
-                target_url=(
+        if not is_scheduled or has_changes:
+            for user in User.objects.filter(is_active=True):
+                configuration_message = ""
+                if sync_job.metadata.get("new_positions") or sync_job.metadata.get(
+                    "updated_position_jds"
+                ) or sync_job.metadata.get("initial_rule_tasks_created"):
+                    configuration_message = (
+                        f" 新岗位 {sync_job.metadata.get('new_positions', 0)} 个，"
+                        f"岗位说明更新 {sync_job.metadata.get('updated_position_jds', 0)} 个，"
+                        f"已创建岗位初始化任务 "
+                        f"{sync_job.metadata.get('initial_rule_tasks_created', 0)} 个。"
+                    )
+                    if sync_job.metadata.get("updated_position_jds"):
+                        configuration_message += " 请前往岗位配置处理。"
+                notify(
+                    user,
+                    "北森同步完成",
                     (
-                        f"/recruitment/sync/{sync_job.pk}/"
-                        "position-initializations/"
-                    )
-                    if sync_job.metadata.get("initial_rule_tasks_created")
-                    else (
-                        "/recruitment/position-configuration/"
-                        if sync_job.metadata.get("updated_position_jds")
-                        else "/recruitment/sync/"
-                    )
-                ),
-            )
+                        f"同步候选人 {sync_job.success_count} 人，"
+                        f"新增简历 {sync_job.metadata.get('resume_file_updates', 0)} 份，"
+                        f"问题 {sync_job.failure_count} 项。"
+                        f"{configuration_message}"
+                    ),
+                    target_url=(
+                        (
+                            f"/recruitment/sync/{sync_job.pk}/"
+                            "position-initializations/"
+                        )
+                        if sync_job.metadata.get("initial_rule_tasks_created")
+                        else (
+                            "/recruitment/position-configuration/"
+                            if sync_job.metadata.get("updated_position_jds")
+                            else "/recruitment/sync/"
+                        )
+                    ),
+                )
     return sync_job

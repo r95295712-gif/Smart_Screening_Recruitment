@@ -417,13 +417,19 @@ def sync_jobs(request):
             or counts[PositionRuleInitialization.Status.RUNNING]
             or counts[PositionRuleInitialization.Status.CANCELLATION_REQUESTED]
         )
-    has_active_sync_jobs = SyncJob.objects.filter(
-        status__in=[
-            SyncJob.Status.PENDING,
-            SyncJob.Status.RUNNING,
-            SyncJob.Status.CANCELLATION_REQUESTED,
-        ]
-    ).exists()
+    has_active_sync_jobs = (
+        SyncJob.objects.filter(
+            status__in=[
+                SyncJob.Status.PENDING,
+                SyncJob.Status.RUNNING,
+                SyncJob.Status.CANCELLATION_REQUESTED,
+            ]
+        )
+        .filter(
+            Q(requested_by__isnull=False) | Q(sync_type=SyncJob.SyncType.MANUAL)
+        )
+        .exists()
+    )
     return render(
         request,
         "recruitment/sync_jobs.html",

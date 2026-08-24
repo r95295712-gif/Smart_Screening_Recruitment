@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}同步任务{% endblock %}
 {% block content %}
-<div data-refresh-region="sync-jobs"{% if has_active_jobs %} data-auto-refresh="5000"{% endif %}>
-<div class="page-header"><div><h1>北森同步</h1><p>选择时间范围，同步候选人、投递、岗位和简历文件。</p></div>
+<div class="page-header">
+  <div>
+    <h1>北森同步</h1>
+    <p>选择时间范围，手动同步候选人、投递、岗位和简历文件；系统后台会自动定时执行增量同步。</p>
+  </div>
   <form method="post" class="sync-form" data-loading-text="正在创建并执行北森同步任务，请稍候。">
     {% csrf_token %}
     <label for="sync-type">同步范围</label>
@@ -14,32 +17,147 @@
     <button class="button primary" type="submit">立即同步</button>
   </form>
 </div>
-<section class="configuration-banner ready"><div><strong>新岗位会自动完成分析初始化</strong><p>同步发现新岗位后，系统采用北森岗位说明生成并发布规则 V0；HR 可直接开始 AI 分析，送审前再配置负责人。</p></div><a class="button secondary" href="{% url 'recruitment:configuration_list' %}">查看岗位配置</a></section>
-{% if has_active_jobs %}
-<section class="panel task-progress-panel">
-  <div class="progress-summary"><strong>同步或岗位初始化任务正在执行</strong><span>自动更新</span></div>
-  <div class="progress-track indeterminate"><span></span></div>
-  <p class="muted">页面每 5 秒自动更新。北森数据同步与岗位规则 V0 生成相互独立，规则生成不会阻塞同步完成。</p>
+
+<section class="configuration-banner ready">
+  <div>
+    <strong>新岗位会自动完成分析初始化</strong>
+    <p>同步发现新岗位后，系统采用北森岗位说明生成并发布规则 V0；HR 可直接开始 AI 分析，送审前再配置负责人。</p>
+  </div>
+  <a class="button secondary" href="{% url 'recruitment:configuration_list' %}">查看岗位配置</a>
 </section>
-{% endif %}
-<section class="panel"><table><thead><tr><th>类型</th><th>同步状态</th><th>时间窗口</th><th>候选人</th><th>投递</th><th>岗位</th><th>岗位初始化</th><th>新增简历</th><th>问题</th><th>开始</th><th>操作</th></tr></thead><tbody>
-{% for job in jobs %}<tr>
-  <td>{{ job.get_sync_type_display }}</td>
-  <td>{{ job.get_status_display }}</td>
-  <td>{{ job.window_start|date:"Y-m-d H:i" }} 至 {{ job.window_end|date:"Y-m-d H:i" }}</td>
-  <td>{{ job.metadata.candidates|default:job.success_count }}</td>
-  <td>{{ job.metadata.applications|default:"-" }}</td>
-  <td>{{ job.metadata.positions|default:"-" }}{% if job.metadata.new_positions or job.metadata.updated_position_jds %}<div class="muted">新岗位 {{ job.metadata.new_positions|default:0 }} · 需更新 {{ job.metadata.updated_position_jds|default:0 }}</div>{% endif %}{% if job.metadata.updated_position_jds %}<div><a class="text-link" href="{% url 'recruitment:configuration_list' %}">前往配置</a></div>{% endif %}</td>
-  <td>{% if job.rule_initialization_summary.total %}<div>完成 {{ job.rule_initialization_summary.success }}/{{ job.rule_initialization_summary.total }}</div><div class="muted">等待 {{ job.rule_initialization_summary.queued }} · 生成中 {{ job.rule_initialization_summary.running }} · 失败 {{ job.rule_initialization_summary.failed }}</div><div><a class="text-link" href="{% url 'recruitment:position_initializations' job.pk %}">查看任务</a></div>{% else %}-{% endif %}</td>
-  <td>{{ job.metadata.resume_file_updates|default:"-" }}</td>
-  <td>
-    {% if job.failure_count %}{{ job.failure_count }}{% elif job.error_message %}1{% else %}0{% endif %}
-    {% if job.error_message %}<div class="muted">任务未完成</div>{% endif %}
-    {% if job.failure_count or job.error_message %}<div><a class="text-link" href="{% url 'recruitment:sync_job_issues' job.pk %}">查看问题</a></div>{% endif %}
-  </td>
-  <td>{{ job.created_at|date:"Y-m-d H:i" }}</td>
-  <td>{% if job.status == "pending" or job.status == "running" %}<form method="post" action="{% url 'recruitment:cancel_sync_job' job.pk %}">{% csrf_token %}<button class="link-button" type="submit">取消任务</button></form>{% else %}-{% endif %}</td>
-</tr>{% empty %}<tr><td colspan="11">暂无任务</td></tr>{% endfor %}
-</tbody></table></section>
+
+<div data-refresh-region="sync-jobs"{% if has_active_jobs %} data-auto-refresh="5000"{% endif %}>
+  {% if has_active_jobs %}
+  <section class="panel task-progress-panel">
+    <div class="progress-summary"><strong>同步或岗位初始化任务正在执行</strong><span>自动更新中</span></div>
+    <div class="progress-track indeterminate"><span></span></div>
+    <p class="muted">页面每 5 秒自动更新。北森数据同步与岗位规则 V0 生成相互独立，规则生成不会阻塞同步完成。</p>
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>同步任务记录</h2>
+      <span class="muted" style="font-size: 13px;">定时增量巡检仅在检测到数据变动或异常时保留记录</span>
+    </div>
+    <div class="table-scroll">
+      <table class="sync-jobs-table">
+        <thead>
+          <tr>
+            <th>类型与来源</th>
+            <th>同步状态</th>
+            <th>时间窗口</th>
+            <th>数据统计</th>
+            <th>岗位初始化</th>
+            <th>问题与异常</th>
+            <th>发起时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr>
+            <td>
+              <div class="sync-type-cell">
+                <span class="badge-sync type-{{ job.sync_type }}">{{ job.get_sync_type_display }}</span>
+                <span class="sync-trigger-meta">
+                  {% if job.requested_by %}
+                    👤 {{ job.requested_by.get_full_name|default:job.requested_by.username }}
+                  {% else %}
+                    ⏱️ 定时调度
+                  {% endif %}
+                </span>
+              </div>
+            </td>
+            <td>
+              <span class="sync-status-badge {{ job.status }}">
+                <span class="status-dot{% if job.status == 'running' or job.status == 'pending' %} pulse{% endif %}"></span>
+                {{ job.get_status_display }}
+              </span>
+            </td>
+            <td>
+              <div class="sync-window-text">
+                {{ job.window_start|date:"Y-m-d H:i" }} 至 {{ job.window_end|date:"Y-m-d H:i" }}
+              </div>
+            </td>
+            <td>
+              <div class="sync-metrics-grid">
+                <span>候选人 <strong>{{ job.metadata.candidates|default:job.success_count }}</strong></span>
+                <span>投递 <strong>{{ job.metadata.applications|default:"-" }}</strong></span>
+                <span>岗位 <strong>{{ job.metadata.positions|default:"-" }}</strong></span>
+                <span>简历 <strong>{{ job.metadata.resume_file_updates|default:"-" }}</strong></span>
+              </div>
+              {% if job.metadata.new_positions or job.metadata.updated_position_jds %}
+              <div class="sync-position-notes">
+                {% if job.metadata.new_positions %}
+                  <span class="badge-tag green">新岗位 {{ job.metadata.new_positions }}</span>
+                {% endif %}
+                {% if job.metadata.updated_position_jds %}
+                  <span class="badge-tag orange">需更新 {{ job.metadata.updated_position_jds }}</span>
+                  <a class="text-link" href="{% url 'recruitment:configuration_list' %}">前往配置</a>
+                {% endif %}
+              </div>
+              {% endif %}
+            </td>
+            <td>
+              {% if job.rule_initialization_summary.total %}
+                <div>
+                  <span class="badge-tag {% if job.rule_initialization_summary.failed %}red{% elif job.rule_initialization_summary.success == job.rule_initialization_summary.total %}green{% else %}blue{% endif %}">
+                    完成 {{ job.rule_initialization_summary.success }}/{{ job.rule_initialization_summary.total }}
+                  </span>
+                </div>
+                <div class="muted small" style="margin-top: 4px;">
+                  等待 {{ job.rule_initialization_summary.queued }} · 生成中 {{ job.rule_initialization_summary.running }}
+                  {% if job.rule_initialization_summary.failed %}
+                    · <span class="text-danger">失败 {{ job.rule_initialization_summary.failed }}</span>
+                  {% else %}
+                    · 失败 0
+                  {% endif %}
+                </div>
+                <div style="margin-top: 4px;">
+                  <a class="text-link" href="{% url 'recruitment:position_initializations' job.pk %}">查看任务</a>
+                </div>
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if job.failure_count or job.error_message %}
+                <div class="sync-issue-box">
+                  <span class="badge-tag red">
+                    {% if job.failure_count %}{{ job.failure_count }} 项问题{% elif job.error_message %}1 项问题{% else %}0{% endif %}
+                  </span>
+                  {% if job.error_message %}<div class="muted small">任务未完成</div>{% endif %}
+                  <div style="margin-top: 4px;">
+                    <a class="text-link" href="{% url 'recruitment:sync_job_issues' job.pk %}">查看问题</a>
+                  </div>
+                </div>
+              {% else %}
+                <span class="badge-tag gray">0 问题</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="font-size: 13px; color: var(--muted);">{{ job.created_at|date:"Y-m-d H:i" }}</div>
+            </td>
+            <td>
+              {% if job.status == "pending" or job.status == "running" %}
+                <form method="post" action="{% url 'recruitment:cancel_sync_job' job.pk %}">
+                  {% csrf_token %}
+                  <button class="link-button danger" type="submit">取消任务</button>
+                </form>
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="8" style="text-align: center; padding: 32px; color: var(--muted);">暂无任务记录</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

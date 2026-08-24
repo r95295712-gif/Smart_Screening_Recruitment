@@ -568,6 +568,46 @@ class SyncTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(Application.objects.count(), 2)
         self.assertEqual(candidate.resume_versions.count(), 1)
 
+    def test_scheduled_incremental_sync_omits_empty_runs(self):
+        class EmptyClient:
+            def iter_applicant_ids(self, start, end, time_type):
+                return []
+
+            def get_positions(self, position_ids):
+                return {}
+
+        # 1. Scheduled run with no changes deletes itself
+        scheduled_job = SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.INCREMENTAL,
+            window_start=timezone.now() - timedelta(minutes=15),
+            window_end=timezone.now(),
+            requested_by=None,
+        )
+        run_sync_job(scheduled_job, EmptyClient())
+        self.assertFalse(SyncJob.objects.filter(pk=scheduled_job.pk).exists())
+
+        # 2. Manual run with no changes is preserved
+        manual_job = SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.MANUAL,
+            window_start=timezone.now() - timedelta(days=1),
+            window_end=timezone.now(),
+            requested_by=self.hr,
+        )
+        run_sync_job(manual_job, EmptyClient())
+        self.assertTrue(SyncJob.objects.filter(pk=manual_job.pk).exists())
+
+    def test_scheduled_background_sync_does_not_show_progress_bar(self):
+        SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.INCREMENTAL,
+            status=SyncJob.Status.RUNNING,
+            window_start=timezone.now() - timedelta(minutes=15),
+            window_end=timezone.now(),
+            requested_by=None,
+        )
+        client = self.authenticated_client(self.hr)
+        response = client.get(reverse("recruitment:sync_jobs"))
+        self.assertNotContains(response, "同步或岗位初始化任务正在执行")
+
     @override_settings(AUTO_GENERATE_INITIAL_RULES=True)
     @patch("recruitment.services.sync.dispatch_task")
     def test_first_sync_queues_then_generates_beisen_based_rule_v0(
