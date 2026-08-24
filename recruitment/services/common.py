@@ -4,11 +4,20 @@ from recruitment.models import AuditEvent, Notification
 
 
 def record_audit(actor, action, instance, metadata=None):
+    if hasattr(instance, "_meta"):
+        object_type = instance._meta.label
+        object_reference = str(getattr(instance, "pk", ""))
+    elif isinstance(instance, (list, tuple)) and len(instance) == 2:
+        object_type = str(instance[0])
+        object_reference = str(instance[1])
+    else:
+        object_type = str(instance or "")
+        object_reference = ""
     AuditEvent.objects.create(
         actor=actor,
         action=action,
-        object_type=instance._meta.label,
-        object_reference=str(instance.pk),
+        object_type=object_type,
+        object_reference=object_reference,
         metadata=metadata or {},
     )
 

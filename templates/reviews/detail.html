@@ -4,6 +4,12 @@
 {% block content %}
 <div class="page-header">
   <div><h1>{{ batch.position }} · 审核结果</h1><p>{{ batch.reviewer }} · {{ batch.get_status_display }}</p></div>
+  <div class="actions">
+    <form method="post" action="{% url 'reviews:delete' batch.pk %}" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
+      {% csrf_token %}
+      <button class="button danger small" type="submit">删除审核批次</button>
+    </form>
+  </div>
 </div>
 <section class="panel">
   <dl class="detail-list">

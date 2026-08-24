@@ -654,3 +654,99 @@ def set_position_status(request, pk):
             record_audit(request.user, "position.status_override", position)
             messages.success(request, "岗位状态已人工设置。")
     return redirect("recruitment:position_detail", pk=position.pk)
+
+
+@login_required
+def delete_sync_job(request, pk):
+    job = get_object_or_404(SyncJob, pk=pk)
+    if request.method == "POST":
+        if job.status in {
+            SyncJob.Status.PENDING,
+            SyncJob.Status.RUNNING,
+            SyncJob.Status.CANCELLATION_REQUESTED,
+        }:
+            messages.error(request, "正在执行中的同步任务无法直接删除，请先取消任务。")
+        else:
+            job_type_label = job.get_sync_type_display()
+            record_audit(request.user, "sync.delete", job)
+            job.delete()
+            messages.success(request, f"{job_type_label}同步记录已删除。")
+    return redirect("recruitment:sync_jobs")
+
+
+@login_required
+def clear_sync_jobs(request):
+    if request.method == "POST":
+        finished_jobs = SyncJob.objects.filter(
+            status__in=[
+                SyncJob.Status.SUCCESS,
+                SyncJob.Status.PARTIAL,
+                SyncJob.Status.FAILED,
+                SyncJob.Status.CANCELLED,
+            ]
+        )
+        deleted_count, _ = finished_jobs.delete()
+        record_audit(request.user, "sync.clear_all", ("recruitment.SyncJob", ""), metadata={"count": deleted_count})
+        messages.success(request, f"已清空 {deleted_count} 条已结束的历史同步任务记录。")
+    return redirect("recruitment:sync_jobs")
+
+
+@login_required
+def delete_position_initialization(request, job_pk, pk):
+    initialization = get_object_or_404(
+        PositionRuleInitialization,
+        pk=pk,
+        sync_job_id=job_pk,
+    )
+    if request.method == "POST":
+        if initialization.status in {
+            PositionRuleInitialization.Status.RUNNING,
+            PositionRuleInitialization.Status.CANCELLATION_REQUESTED,
+        }:
+            messages.error(request, "正在生成中的任务无法直接删除，请先取消任务。")
+        else:
+            pos_name = str(initialization.position.name)
+            record_audit(request.user, "position_rule_initialization.delete", initialization)
+            initialization.delete()
+            messages.success(request, f"岗位「{pos_name}」的初始化任务记录已删除。")
+    return redirect("recruitment:position_initializations", pk=job_pk)
+
+
+@login_required
+def clear_position_initializations(request, job_pk):
+    job = get_object_or_404(SyncJob, pk=job_pk)
+    if request.method == "POST":
+        finished_inits = PositionRuleInitialization.objects.filter(
+            sync_job=job,
+            status__in=[
+                PositionRuleInitialization.Status.SUCCESS,
+                PositionRuleInitialization.Status.FAILED,
+                PositionRuleInitialization.Status.CANCELLED,
+            ],
+        )
+        deleted_count, _ = finished_inits.delete()
+        record_audit(request.user, "position_rule_initialization.clear_all", job, metadata={"count": deleted_count})
+        messages.success(request, f"已清理 {deleted_count} 条已结束的规则初始化记录。")
+    return redirect("recruitment:position_initializations", pk=job_pk)
+
+
+@login_required
+def delete_notification(request, pk):
+    notification = get_object_or_404(
+        Notification,
+        pk=pk,
+        user=request.user,
+    )
+    if request.method == "POST":
+        notification.delete()
+        messages.success(request, "通知已删除。")
+    return redirect("recruitment:notifications")
+
+
+@login_required
+def clear_notifications(request):
+    if request.method == "POST":
+        deleted_count, _ = Notification.objects.filter(user=request.user).delete()
+        messages.success(request, f"已清空全部 {deleted_count} 条站内通知。")
+    return redirect("recruitment:notifications")
+

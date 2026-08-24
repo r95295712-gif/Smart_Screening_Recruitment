@@ -98,6 +98,26 @@ def cancel_job(request, pk):
 
 
 @login_required
+def delete_job(request, pk):
+    job = get_object_or_404(AnalysisJob, pk=pk)
+    position_id = job.position_id
+    if request.method == "POST":
+        if job.status in {
+            AnalysisJob.Status.PENDING,
+            AnalysisJob.Status.RUNNING,
+            AnalysisJob.Status.CANCELLATION_REQUESTED,
+        }:
+            messages.error(request, "正在执行中的分析任务无法直接删除，请先取消任务。")
+            return redirect("analysis:job_detail", pk=job.pk)
+        job.delete()
+        record_audit(request.user, "analysis_job.delete", f"AnalysisJob#{pk}")
+        messages.success(request, "AI 分析任务记录已删除。")
+        return redirect("recruitment:position_detail", pk=position_id)
+    return redirect("analysis:job_detail", pk=job.pk)
+
+
+
+@login_required
 def report_detail(request, pk):
     report = get_object_or_404(
         AnalysisReport.objects.select_related(

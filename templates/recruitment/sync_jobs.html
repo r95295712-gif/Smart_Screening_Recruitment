@@ -37,8 +37,18 @@
 
   <section class="panel">
     <div class="panel-header">
-      <h2>同步任务记录</h2>
-      <span class="muted" style="font-size: 13px;">定时增量巡检仅在检测到数据变动或异常时保留记录</span>
+      <div>
+        <h2>同步任务记录</h2>
+        <span class="muted" style="font-size: 13px;">定时增量巡检仅在检测到数据变动或异常时保留记录</span>
+      </div>
+      <div class="actions">
+        {% if jobs %}
+        <form method="post" action="{% url 'recruitment:clear_sync_jobs' %}" onsubmit="return confirm('确定要清空所有已结束的历史同步任务记录吗？');" style="margin: 0;">
+          {% csrf_token %}
+          <button class="button danger small" type="submit">清空历史记录</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
     <div class="table-scroll">
       <table class="sync-jobs-table">
@@ -146,7 +156,10 @@
                   <button class="link-button danger" type="submit">取消任务</button>
                 </form>
               {% else %}
-                <span class="muted">-</span>
+                <form method="post" action="{% url 'recruitment:delete_sync_job' job.pk %}" onsubmit="return confirm('确定要删除此条同步任务记录吗？');" style="display: inline;">
+                  {% csrf_token %}
+                  <button class="link-button danger" type="submit">删除</button>
+                </form>
               {% endif %}
             </td>
           </tr>

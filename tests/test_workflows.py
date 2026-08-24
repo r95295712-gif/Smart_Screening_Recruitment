@@ -2385,6 +2385,138 @@ class DeletionTests(WorkflowFixtureMixin, TestCase):
             Application.objects.filter(application_id="APP-EXCLUDED").exists()
         )
 
+    def test_delete_and_clear_sync_jobs(self):
+        client = self.authenticated_client(self.hr)
+        finished_job = SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.MANUAL,
+            status=SyncJob.Status.SUCCESS,
+            requested_by=self.hr,
+            window_start=timezone.now() - timedelta(days=1),
+            window_end=timezone.now(),
+        )
+        running_job = SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.MANUAL,
+            status=SyncJob.Status.RUNNING,
+            requested_by=self.hr,
+            window_start=timezone.now() - timedelta(days=1),
+            window_end=timezone.now(),
+        )
+
+        # Cannot delete running job
+        res = client.post(reverse("recruitment:delete_sync_job", args=[running_job.pk]))
+        self.assertRedirects(res, reverse("recruitment:sync_jobs"))
+        self.assertTrue(SyncJob.objects.filter(pk=running_job.pk).exists())
+
+        # Can delete finished job
+        res = client.post(reverse("recruitment:delete_sync_job", args=[finished_job.pk]))
+        self.assertRedirects(res, reverse("recruitment:sync_jobs"))
+        self.assertFalse(SyncJob.objects.filter(pk=finished_job.pk).exists())
+
+        # Create multiple finished jobs and clear all
+        for i in range(3):
+            SyncJob.objects.create(
+                sync_type=SyncJob.SyncType.INCREMENTAL,
+                status=SyncJob.Status.SUCCESS,
+                window_start=timezone.now() - timedelta(days=1),
+                window_end=timezone.now(),
+            )
+        res = client.post(reverse("recruitment:clear_sync_jobs"))
+        self.assertRedirects(res, reverse("recruitment:sync_jobs"))
+        self.assertEqual(SyncJob.objects.filter(status=SyncJob.Status.SUCCESS).count(), 0)
+        self.assertTrue(SyncJob.objects.filter(pk=running_job.pk).exists())
+
+    def test_delete_and_clear_position_initializations(self):
+        client = self.authenticated_client(self.hr)
+        job = SyncJob.objects.create(
+            sync_type=SyncJob.SyncType.MANUAL,
+            status=SyncJob.Status.SUCCESS,
+            requested_by=self.hr,
+            window_start=timezone.now() - timedelta(days=1),
+            window_end=timezone.now(),
+        )
+        pos1 = Position.objects.create(name="前端开发", beisen_position_id="P-TEST-1")
+        pos2 = Position.objects.create(name="后端开发", beisen_position_id="P-TEST-2")
+        init1 = PositionRuleInitialization.objects.create(
+            sync_job=job,
+            position=pos1,
+            requested_by=self.hr,
+            status=PositionRuleInitialization.Status.SUCCESS,
+        )
+        init2 = PositionRuleInitialization.objects.create(
+            sync_job=job,
+            position=pos2,
+            requested_by=self.hr,
+            status=PositionRuleInitialization.Status.FAILED,
+        )
+
+        res = client.post(
+            reverse("recruitment:delete_position_initialization", args=[job.pk, init1.pk])
+        )
+        self.assertRedirects(res, reverse("recruitment:position_initializations", args=[job.pk]))
+        self.assertFalse(PositionRuleInitialization.objects.filter(pk=init1.pk).exists())
+        self.assertTrue(PositionRuleInitialization.objects.filter(pk=init2.pk).exists())
+
+        res = client.post(
+            reverse("recruitment:clear_position_initializations", args=[job.pk])
+        )
+        self.assertRedirects(res, reverse("recruitment:position_initializations", args=[job.pk]))
+        self.assertFalse(PositionRuleInitialization.objects.filter(pk=init2.pk).exists())
+
+    def test_delete_and_clear_notifications(self):
+        client = self.authenticated_client(self.hr)
+        n1 = self.hr.notifications.create(title="通知1", message="内容1")
+        n2 = self.hr.notifications.create(title="通知2", message="内容2")
+        admin_n = self.admin.notifications.create(title="管理员通知", message="内容")
+
+        # Delete single notification
+        res = client.post(reverse("recruitment:delete_notification", args=[n1.pk]))
+        self.assertRedirects(res, reverse("recruitment:notifications"))
+        self.assertFalse(self.hr.notifications.filter(pk=n1.pk).exists())
+
+        # Clear all user's notifications
+        res = client.post(reverse("recruitment:clear_notifications"))
+        self.assertRedirects(res, reverse("recruitment:notifications"))
+        self.assertEqual(self.hr.notifications.count(), 0)
+        self.assertTrue(self.admin.notifications.filter(pk=admin_n.pk).exists())
+
+    def test_delete_analysis_job_and_review_batch(self):
+        client = self.authenticated_client(self.hr)
+        pos = Position.objects.create(name="产品经理", beisen_position_id="P-TEST-PM")
+        analysis_job = AnalysisJob.objects.create(
+            position=pos,
+            requested_by=self.hr,
+            status=AnalysisJob.Status.SUCCESS,
+            total_count=0,
+        )
+        running_analysis = AnalysisJob.objects.create(
+            position=pos,
+            requested_by=self.hr,
+            status=AnalysisJob.Status.RUNNING,
+            total_count=1,
+        )
+
+        # Cannot delete running analysis job
+        res = client.post(reverse("analysis:job_delete", args=[running_analysis.pk]))
+        self.assertTrue(AnalysisJob.objects.filter(pk=running_analysis.pk).exists())
+
+        # Can delete completed analysis job
+        res = client.post(reverse("analysis:job_delete", args=[analysis_job.pk]))
+        self.assertRedirects(res, reverse("recruitment:position_detail", args=[pos.pk]))
+        self.assertFalse(AnalysisJob.objects.filter(pk=analysis_job.pk).exists())
+
+        # Delete review batch
+        reviewer = Reviewer.objects.create(name="张主管", email="zhang@example.com")
+        batch = ReviewBatch.objects.create(
+            position=pos,
+            created_by=self.hr,
+            reviewer=reviewer,
+            status=ReviewBatch.Status.REVOKED,
+            expires_at=timezone.now() + timedelta(days=3),
+        )
+        res = client.post(reverse("reviews:delete", args=[batch.pk]))
+        self.assertRedirects(res, reverse("reviews:list"))
+        self.assertFalse(ReviewBatch.objects.filter(pk=batch.pk).exists())
+
 
 class PageSmokeTests(WorkflowFixtureMixin, TestCase):
     def test_active_tasks_expose_cancel_actions(self):

@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     cancel_job,
+    delete_job,
     job_detail,
     job_excel,
     report_detail,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("positions/<int:position_id>/start/", start_analysis, name="start"),
     path("jobs/<int:pk>/", job_detail, name="job_detail"),
     path("jobs/<int:pk>/cancel/", cancel_job, name="job_cancel"),
+    path("jobs/<int:pk>/delete/", delete_job, name="job_delete"),
     path("jobs/<int:pk>/export.xlsx", job_excel, name="job_excel"),
     path("reports/<int:pk>/", report_detail, name="report_detail"),
     path("reports/<int:pk>/export.pdf", report_pdf, name="report_pdf"),

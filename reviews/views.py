@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.task_dispatch import dispatch_task
 from recruitment.models import Position
+from recruitment.services.common import record_audit
 from talent_pool.models import TalentMembership
 from talent_pool.services import add_candidate
 
@@ -274,3 +275,14 @@ def reopen_review(request, pk):
             except (ReviewError, ValueError) as exc:
                 messages.error(request, str(exc))
     return redirect("reviews:list")
+
+
+@login_required
+def delete_review(request, pk):
+    batch = get_object_or_404(ReviewBatch, pk=pk)
+    if request.method == "POST":
+        record_audit(request.user, "review_batch.delete", batch)
+        batch.delete()
+        messages.success(request, "审核批次记录已删除。")
+    return redirect("reviews:list")
+

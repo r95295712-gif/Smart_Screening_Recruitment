@@ -4,6 +4,7 @@ from .public_views import public_resume, public_review, public_review_item
 from .views import (
     add_approved_batch_to_talent,
     add_approved_to_talent,
+    delete_review,
     reopen_review,
     resend_review,
     review_detail,
@@ -17,6 +18,7 @@ app_name = "reviews"
 urlpatterns = [
     path("", review_list, name="list"),
     path("<int:pk>/", review_detail, name="detail"),
+    path("<int:pk>/delete/", delete_review, name="delete"),
     path(
         "<int:pk>/talent/",
         add_approved_batch_to_talent,
