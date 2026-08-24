@@ -109,7 +109,21 @@ function scheduleRegionRefresh(region) {
         region.dataset.refreshRegion
       )}"]`;
       const nextRegion = nextDocument.querySelector(selector);
-      if (!nextRegion) return;
+      if (!nextRegion) {
+        delete region.dataset.autoRefresh;
+        return;
+      }
+
+      // If content hasn't changed at all, skip DOM replacement to eliminate any flicker
+      if (region.innerHTML === nextRegion.innerHTML) {
+        if (nextRegion.dataset.autoRefresh) {
+          scheduleRegionRefresh(region);
+        } else {
+          delete region.dataset.autoRefresh;
+        }
+        return;
+      }
+
       region.replaceWith(nextRegion);
       enhanceTables(nextRegion);
       enhanceRowSelection(nextRegion);

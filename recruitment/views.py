@@ -412,10 +412,15 @@ def sync_jobs(request):
             counts[initialization.status] += 1
         counts["total"] = sum(counts.values())
         job.rule_initialization_summary = counts
+        is_job_active = job.status in {
+            SyncJob.Status.PENDING,
+            SyncJob.Status.RUNNING,
+            SyncJob.Status.CANCELLATION_REQUESTED,
+        }
         has_active_initializations = has_active_initializations or bool(
-            counts[PositionRuleInitialization.Status.QUEUED]
-            or counts[PositionRuleInitialization.Status.RUNNING]
+            counts[PositionRuleInitialization.Status.RUNNING]
             or counts[PositionRuleInitialization.Status.CANCELLATION_REQUESTED]
+            or (is_job_active and counts[PositionRuleInitialization.Status.QUEUED])
         )
     has_active_sync_jobs = (
         SyncJob.objects.filter(
