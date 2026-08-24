@@ -92,7 +92,7 @@ def analyze_item(item, gateway=None):
         model_version, result["input_tokens"], result["output_tokens"]
     )
     with transaction.atomic():
-        item = AnalysisItem.objects.select_for_update().select_related(
+        item = AnalysisItem.objects.select_for_update(of=("self",)).select_related(
             "job__requested_by", "application__candidate", "application__position"
         ).get(pk=item.pk)
         report = AnalysisReport.objects.create(

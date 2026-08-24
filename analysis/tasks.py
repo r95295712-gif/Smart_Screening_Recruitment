@@ -33,7 +33,7 @@ def safe_analysis_error(exc):
 def execute_position_rule_initialization(initialization_id):
     with transaction.atomic():
         initialization = (
-            PositionRuleInitialization.objects.select_for_update()
+            PositionRuleInitialization.objects.select_for_update(of=("self",))
             .select_related("position", "requested_by")
             .get(pk=initialization_id)
         )
