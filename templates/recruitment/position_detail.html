@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ position.name }}{% endblock %}
+{% block back_url %}{% url 'recruitment:position_list' %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{{ position.name }}</h1><p>{{ position.position_type|default:"未设置岗位类型" }} · {{ position.get_status_display }}</p></div>
+  <div class="actions">
+    <a class="button secondary" href="{% url 'recruitment:configuration_detail' position.pk %}">岗位配置</a>
+    <form method="post" action="{% url 'recruitment:set_position_status' position.pk %}">{% csrf_token %}{% if position.status == "active" %}<input type="hidden" name="status" value="historical"><button class="button secondary" type="submit">设为历史岗位</button>{% else %}<input type="hidden" name="status" value="active"><button class="button secondary" type="submit">临时启用岗位</button>{% endif %}</form>
+  </div>
+</div>
+<section class="configuration-banner {% if configuration_state.can_analyze %}ready{% endif %}">
+  <div><strong>配置状态：{{ configuration_state.label }}</strong>{% if configuration_state.can_analyze and not configuration_state.can_review %}<p>已可使用规则 V0 开始 AI 分析；送审前请完成：{{ configuration_state.blockers|join:"、" }}</p>{% elif configuration_state.blockers %}<p>还需完成：{{ configuration_state.blockers|join:"、" }}</p>{% elif configuration_state.code == "update_required" %}<p>当前仍可使用已发布规则，建议及时核对北森最新岗位说明。</p>{% else %}<p>岗位已完成岗位说明、评估规则和负责人配置。</p>{% endif %}</div>
+  <a class="button secondary" href="{% url 'recruitment:configuration_detail' position.pk %}">查看配置</a>
+</section>
+<section class="panel">
+  <div class="panel-header"><h2>北森岗位 JD</h2></div>
+  {% if position.source_jd %}<div class="pre-wrap">{{ position.source_jd }}</div>{% else %}<div class="empty">北森未返回岗位 JD。</div>{% endif %}
+</section>
+<div class="position-workspace">
+  <section class="panel position-filter-panel">
+    <form method="get" class="filters">{{ form.as_div }}<button class="button primary" type="submit">筛选</button></form>
+  </section>
+  <form method="post" action="{% url 'analysis:start' position.pk %}">
+    {% csrf_token %}
+    <section class="panel position-applications-panel" id="application-list">
+      <div class="panel-header application-toolbar"><h2>投递记录</h2><div class="actions"><button class="button primary" type="submit"{% if not configuration_state.can_analyze %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>批量 AI 分析</button><button class="button secondary" type="submit" formaction="{% url 'reviews:start' position.pk %}"{% if not configuration_state.can_review %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>送负责人审核</button><button class="button danger" type="submit" formaction="{% url 'recruitment:bulk_delete_applications' position.pk %}">批量删除</button></div></div>
+      <div class="table-scroll application-table-scroll">
+        <table>
+          <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('[name=application_ids]').forEach(x=>x.checked=this.checked)"></th><th>候选人</th><th>投递时间</th><th>来源</th><th>简历</th><th>AI 状态</th><th>审核</th><th>操作</th></tr></thead>
+          <tbody>
+            {% for application in applications %}
+            <tr>
+              <td><input type="checkbox" name="application_ids" value="{{ application.pk }}"></td>
+              <td><a class="text-link" href="{% url 'recruitment:candidate_detail' application.candidate.pk %}?position_id={{ position.pk }}">{{ application.candidate }}</a></td>
+              <td>{{ application.applied_at|date:"Y-m-d H:i"|default:"-" }}</td>
+              <td>{{ application.get_source_type_display }}{% if application.source_channel %}<div class="muted">{{ application.source_channel }}</div>{% endif %}{% if application.linked_application %}<div class="muted">已关联人才库推荐</div>{% endif %}</td>
+              <td>
+                {% if application.current_resume %}
+                  <a class="text-link" target="_blank" href="{% url 'recruitment:preview_resume' application.current_resume.pk %}">预览</a>
+                  <a class="text-link" href="{% url 'recruitment:download_resume' application.current_resume.pk %}">下载</a>
+                {% elif application.source_type == "beisen" %}
+                  <button class="link-button" type="submit" formaction="{% url 'recruitment:pull_resume' application.pk %}" formmethod="post">按需补拉</button>
+                {% else %}-{% endif %}
+              </td>
+              <td>
+                {% with item=application.analysis_items.last %}
+                  {% if item %}<a class="text-link" href="{% url 'analysis:job_detail' item.job.pk %}">{{ item.get_status_display }}</a>{% if item.report %}<div>{{ item.report.score }} · {{ item.report.get_rating_display }}</div>{% elif item.reused_report %}<div>{{ item.reused_report.score }} · {{ item.reused_report.get_rating_display }}</div>{% endif %}{% else %}未分析{% endif %}
+                {% endwith %}
+              </td>
+              <td>{% with item=application.review_items.last %}{% if item %}{{ item.get_decision_display }}{% else %}未送审{% endif %}{% endwith %}</td>
+              <td class="actions">
+                {% with item=application.analysis_items.last %}{% if item and item.status == "success" %}<a class="text-link" href="{% url 'talent_pool:add_from_application' application.pk %}">导入人才库</a>{% endif %}{% endwith %}<a class="text-link danger" href="{% url 'recruitment:delete_application' application.pk %}">删除</a>
+              </td>
+            </tr>
+            {% empty %}<tr><td colspan="8">暂无投递记录。</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </form>
+</div>
+{% endblock %}

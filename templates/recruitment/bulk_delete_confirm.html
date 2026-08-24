@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}批量删除投递记录{% endblock %}
+{% block back_url %}{% url 'recruitment:position_detail' position.pk %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>批量删除投递记录</h1><p>{{ position }} · 共选择 {{ applications|length }} 条记录</p></div>
+</div>
+<section class="panel narrow">
+  <div class="configuration-banner">
+    <div><strong>删除后记录将进入回收站</strong><p>管理员可在 3 天内恢复这些投递记录。</p></div>
+  </div>
+  <div class="list">
+    {% for application in applications %}
+      <div class="list-row"><div><strong>{{ application.candidate }}</strong><p>{{ application.applied_at|date:"Y-m-d H:i"|default:"-" }}</p></div></div>
+    {% endfor %}
+  </div>
+  <form method="post" class="stack-form">
+    {% csrf_token %}
+    {% for application_id in application_ids %}<input type="hidden" name="application_ids" value="{{ application_id }}">{% endfor %}
+    <input type="hidden" name="confirmed" value="1">
+    {{ form.as_div }}
+    <div class="actions">
+      <button class="button danger" type="submit">确认批量删除</button>
+      <a class="button secondary" href="{% url 'recruitment:position_detail' position.pk %}">取消</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

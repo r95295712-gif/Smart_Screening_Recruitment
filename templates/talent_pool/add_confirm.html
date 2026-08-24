@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}导入人才库{% endblock %}
+{% block back_url %}{% url 'recruitment:position_detail' application.position_id %}{% endblock %}
+{% block content %}<div class="page-header"><div><h1>导入人才库</h1><p>此操作只建立人才库成员身份，不改变北森数据。</p></div></div><section class="panel narrow"><p>确认将 <strong>{{ application.candidate }}</strong> 导入人才库？</p><form method="post">{% csrf_token %}<div class="actions"><button class="button primary" type="submit">确认导入</button><a class="button secondary" href="{% url 'recruitment:position_detail' application.position_id %}">取消</a></div></form></section>{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}回收站{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>回收站</h1><p>仅管理员可恢复 3 天内的投递和人才库记录。</p></div></div>
+<section class="panel">
+  <h2>已删除投递</h2>
+  <table><thead><tr><th>候选人</th><th>岗位</th><th>删除人</th><th>清理时间</th><th>操作</th></tr></thead><tbody>
+    {% for item in applications %}<tr><td>{{ item.candidate }}</td><td>{{ item.position }}</td><td>{{ item.deleted_by|default:"-" }}</td><td>{{ item.purge_after|date:"Y-m-d H:i" }}</td><td><form method="post" action="{% url 'recruitment:restore_application' item.pk %}">{% csrf_token %}<button class="link-button" type="submit">恢复</button></form></td></tr>
+    {% empty %}<tr><td colspan="5">暂无记录</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+<section class="panel">
+  <h2>已移出人才库</h2>
+  <table><thead><tr><th>候选人</th><th>移出人</th><th>清理时间</th><th>操作</th></tr></thead><tbody>
+    {% for item in memberships %}<tr><td>{{ item.candidate }}</td><td>{{ item.removed_by|default:"-" }}</td><td>{{ item.purge_after|date:"Y-m-d H:i" }}</td><td><form method="post" action="{% url 'talent_pool:restore' item.pk %}">{% csrf_token %}<button class="link-button" type="submit">恢复</button></form></td></tr>
+    {% empty %}<tr><td colspan="4">暂无记录</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

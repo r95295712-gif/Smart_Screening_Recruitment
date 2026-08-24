@@ -1,0 +1,89 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>智筛招聘</title>
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("smart-screening-theme");
+      if (savedTheme === "light" || savedTheme === "dark") {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (error) {}
+  </script>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260821-sticky-page-header">
+  <script src="{% static 'js/app.js' %}?v=20260820-page-state-2" defer></script>
+</head>
+<body>
+  {% if request.user.is_authenticated %}
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <a class="brand" href="{% url 'dashboard' %}">
+          <span class="brand-mark">智</span>
+          <span><strong>智筛招聘</strong><small>招聘智能工作台</small></span>
+        </a>
+        <button class="mobile-nav-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-label="展开导航"><span></span><span></span><span></span></button>
+      </div>
+      <nav data-sidebar-nav>
+        <a class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">工作台</a>
+        <a class="{% if request.resolver_match.app_name == 'recruitment' and request.resolver_match.url_name != 'sync_jobs' and request.resolver_match.url_name != 'sync_job_issues' and request.resolver_match.url_name != 'retry_sync_issue' and request.resolver_match.url_name != 'notifications' and request.resolver_match.url_name != 'notification_view' and request.resolver_match.url_name != 'recycle_bin' and request.resolver_match.url_name != 'restore_application' %}active{% endif %}" href="{% url 'recruitment:position_list' %}">岗位与简历</a>
+        <a class="{% if request.resolver_match.app_name == 'reviews' %}active{% endif %}" href="{% url 'reviews:list' %}">负责人审核</a>
+        <a class="{% if request.resolver_match.app_name == 'talent_pool' %}active{% endif %}" href="{% url 'talent_pool:list' %}">人才库</a>
+        <a class="{% if request.resolver_match.url_name == 'sync_jobs' %}active{% endif %}" href="{% url 'recruitment:sync_jobs' %}">同步任务</a>
+        <a class="{% if request.resolver_match.url_name == 'notifications' or request.resolver_match.url_name == 'notification_view' %}active{% endif %}" href="{% url 'recruitment:notifications' %}">
+          站内通知{% if unread_notification_count %}<span class="badge">{{ unread_notification_count }}</span>{% endif %}
+        </a>
+        {% if request.user.is_system_admin %}
+          <div class="nav-label">管理</div>
+          <a class="{% if request.resolver_match.app_name == 'accounts' and request.resolver_match.url_name != 'logout' %}active{% endif %}" href="{% url 'accounts:user_list' %}">用户账号</a>
+          <a class="{% if request.resolver_match.url_name == 'usage' %}active{% endif %}" href="{% url 'analysis:usage' %}">模型用量</a>
+          <a class="{% if request.resolver_match.url_name == 'recycle_bin' or request.resolver_match.url_name == 'restore_application' %}active{% endif %}" href="{% url 'recruitment:recycle_bin' %}">回收站</a>
+        {% endif %}
+      </nav>
+      <div class="sidebar-footer">
+        <button class="theme-toggle" type="button" data-theme-toggle>
+          <span class="theme-toggle-dot" aria-hidden="true"></span>
+          <span data-theme-label>跟随系统</span>
+        </button>
+        <div class="sidebar-user">
+          <span class="user-avatar">{{ request.user.username|first|upper }}</span>
+          <div><strong>{{ request.user.username }}</strong><small>{{ request.user.get_role_display }}</small></div>
+          <a href="{% url 'accounts:logout' %}">退出</a>
+        </div>
+      </div>
+    </aside>
+  {% else %}
+    <button class="floating-theme-toggle" type="button" data-theme-toggle><span class="theme-toggle-dot" aria-hidden="true"></span><span data-theme-label>跟随系统</span></button>
+  {% endif %}
+  <main class="{% if request.user.is_authenticated %}main-shell{% if request.resolver_match.url_name != "dashboard" %} has-back-bar{% endif %}{% else %}auth-shell{% endif %}">
+    {% if request.user.is_authenticated and request.resolver_match.url_name != "dashboard" %}
+      <div class="global-back-bar">
+        <button class="global-back-button" type="button" data-back-button data-fallback-url="{% block back_url %}{% url 'dashboard' %}{% endblock %}">
+          <span aria-hidden="true">←</span>
+          <span>返回上一级</span>
+        </button>
+      </div>
+    {% endif %}
+    {% if messages %}
+      <div class="messages">
+        {% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <div class="task-overlay" data-task-overlay hidden aria-live="polite" aria-busy="true">
+    <div class="task-overlay-card">
+      <span class="loading-spinner" aria-hidden="true"></span>
+      <strong data-task-overlay-title>正在处理</strong>
+      <p data-task-overlay-message>任务正在提交，请稍候，不要重复点击。</p>
+      <div class="progress-track indeterminate"><span></span></div>
+      <div class="task-overlay-actions">
+        <button class="button secondary" type="button" data-task-overlay-cancel>取消等待</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}同步问题明细{% endblock %}
+{% block back_url %}{% url 'recruitment:sync_jobs' %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>同步问题明细</h1>
+    <p>{{ job.get_sync_type_display }}同步 · {{ job.created_at|date:"Y-m-d H:i" }} · 共 {{ job.failure_count }} 项问题</p>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>需要处理的内容</h2>
+      <p>这里只展示便于业务人员定位和处理的信息，不显示候选人编号或系统技术错误。</p>
+    </div>
+  </div>
+  <div class="sync-issue-list">
+    {% for issue in issues %}
+    <article class="sync-issue-card">
+      <div class="sync-issue-heading">
+        <div>
+          <h3>
+            {% if issue.candidate %}
+            <a class="text-link" href="{% url 'recruitment:candidate_detail' issue.candidate.pk %}">{{ issue.candidate_name }}</a>
+            {% else %}
+            {{ issue.candidate_name }}
+            {% endif %}
+          </h3>
+          <p>{{ issue.positions }}</p>
+        </div>
+        <span class="status warning">{{ issue.title }}</span>
+      </div>
+      <div class="sync-issue-details">
+        <div><span>原因说明</span><p>{{ issue.reason }}</p></div>
+        <div><span>处理建议</span><p>{{ issue.suggestion }}</p></div>
+      </div>
+      <div class="sync-issue-actions">
+        {% if issue.candidate %}
+        <a class="button secondary" href="{% url 'recruitment:candidate_detail' issue.candidate.pk %}">查看候选人</a>
+        {% endif %}
+        {% if issue.can_retry and issue.candidate %}
+        <form method="post" action="{% url 'recruitment:retry_sync_issue' job.pk issue.candidate.pk %}" data-loading-text="正在提交重新获取任务，请稍候。">
+          {% csrf_token %}
+          <button class="button primary" type="submit">重新获取预览</button>
+        </form>
+        {% endif %}
+      </div>
+    </article>
+    {% empty %}
+    <div class="empty">本次任务没有可展示的问题明细。</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

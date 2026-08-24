@@ -1,0 +1,68 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>智筛招聘</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260820-review-flow">
+</head>
+<body>
+<main class="public-shell public-review-shell">
+  <div class="page-header">
+    <div>
+      <h1>{{ batch.position }} · 审核列表</h1>
+      <p>负责人：{{ batch.reviewer.name }} · 截止：{{ batch.expires_at|date:"Y-m-d H:i" }}</p>
+    </div>
+  </div>
+
+  {% if unavailable %}
+  <section class="panel">
+    <div class="empty">该审核链接已完成、撤销或过期，不能继续使用。</div>
+  </section>
+  {% else %}
+  {% if success_message %}
+  <div class="messages"><div class="message success">{{ success_message }}</div></div>
+  {% endif %}
+  {% if errors %}
+  <div class="messages">
+    {% for error in errors %}<div class="message error">{{ error }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <section class="panel public-candidate-panel">
+    <div class="public-candidate-list">
+      {% for item in items %}
+      <article class="public-candidate-row">
+        <strong>{{ item.application.candidate.name }}</strong>
+        <div class="public-candidate-score">
+          {% if item.analysis_report %}
+          <strong>{{ item.analysis_report.score }}</strong><span>匹配分</span>
+          {% else %}
+          <strong>--</strong><span>匹配分</span>
+          {% endif %}
+        </div>
+        <span class="public-candidate-status {% if item.is_draft and item.decision == 'pending' %}pending{% elif item.is_draft %}draft{% elif item.decision == 'approved' %}approved{% elif item.decision == 'rejected' %}rejected{% else %}discuss{% endif %}">
+          {% if item.is_draft and item.decision == "pending" %}未审核{% elif item.is_draft %}草稿 · {{ item.get_decision_display }}{% else %}{{ item.get_decision_display }}{% endif %}
+        </span>
+        <a class="button primary" href="{% url 'reviews:public_item' batch.public_id token item.pk %}">审核</a>
+      </article>
+      {% empty %}
+      <div class="empty">暂无可审核候选人。</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="actions public-review-actions">
+      <button class="button secondary" name="action" value="draft" type="submit">保存草稿</button>
+      <button class="button secondary danger" name="action" value="clear" type="submit" onclick="return confirm('确认清空当前所有填写内容吗？')">清空填写</button>
+      <button class="button primary" name="action" value="submit" type="submit">提交全部结果</button>
+    </div>
+  </form>
+  {% endif %}
+</main>
+</body>
+</html>

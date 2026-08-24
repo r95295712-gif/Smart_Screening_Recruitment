@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}选择负责人{% endblock %}
+{% block back_url %}{% url 'recruitment:position_detail' position.pk %}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>选择审核负责人</h1><p>{{ position }} 配置了多名负责人，可选择一名或多名，系统将分别发送审核邮件。</p></div></div>
+<section class="panel narrow"><form method="post" class="stack-form" action="{% url 'reviews:start' position.pk %}">{% csrf_token %}
+{% for application_id in application_ids %}<input type="hidden" name="application_ids" value="{{ application_id }}">{% endfor %}
+<fieldset><legend>负责人</legend>{% for reviewer in reviewers %}<label><input type="checkbox" name="reviewer_ids" value="{{ reviewer.pk }}"> {{ reviewer }}</label>{% endfor %}</fieldset>
+<label>链接有效期<select name="expiry_hours"><option value="72">72 小时（默认）</option><option value="24">24 小时</option><option value="168">7 天</option></select></label>
+<button class="button primary" type="submit">确认并发送</button></form></section>
+{% endblock %}

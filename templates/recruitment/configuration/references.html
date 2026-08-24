@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}岗位参考资料{% endblock %}
+{% block back_url %}{% url 'recruitment:configuration_list' %}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>参考资料</h1><p>上传招聘汇总文档和岗位负责人表，核对解析结果后再发布。</p></div></div>
+<section class="panel narrow"><div class="panel-header"><h2>上传新版本</h2></div><form method="post" enctype="multipart/form-data" class="stack-form">{% csrf_token %}{{ form.as_div }}<button class="button primary" type="submit">上传并解析</button></form></section>
+<section class="panel"><div class="table-scroll"><table><thead><tr><th>资料</th><th>类型</th><th>版本</th><th>状态</th><th>解析岗位数</th><th>上传人</th><th>上传时间</th><th>操作</th></tr></thead><tbody>
+{% for document in documents %}<tr><td><strong>{{ document.name }}</strong>{% if document.parse_error %}<div class="muted">{{ document.parse_error }}</div>{% endif %}</td><td>{{ document.get_document_type_display }}</td><td>V{{ document.version }}</td><td>{{ document.get_status_display }}</td><td>{{ document.positions.count }}</td><td>{{ document.uploaded_by }}</td><td>{{ document.uploaded_at|date:"Y-m-d H:i" }}</td><td>{% if document.status == "draft" %}<form method="post" action="{% url 'recruitment:reference_publish' document.pk %}">{% csrf_token %}<button class="link-button" type="submit">发布为当前版本</button></form>{% else %}-{% endif %}</td></tr>
+{% empty %}<tr><td colspan="8">尚未上传参考资料。</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

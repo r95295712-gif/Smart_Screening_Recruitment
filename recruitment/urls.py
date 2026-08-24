@@ -1,0 +1,124 @@
+from django.urls import path
+
+from .file_views import download_resume, preview_resume
+from .views import (
+    bulk_delete_applications,
+    cancel_position_initialization,
+    cancel_sync_job,
+    candidate_detail,
+    delete_application,
+    notification_view,
+    notifications,
+    position_initializations,
+    position_detail,
+    position_list,
+    pull_resume,
+    recycle_bin,
+    restore_application_view,
+    retry_sync_issue,
+    retry_position_initialization,
+    set_position_status,
+    sync_job_issues,
+    sync_jobs,
+)
+from .views_configuration import (
+    configuration_add_reviewer,
+    configuration_ai_diff,
+    configuration_confirm_jd,
+    configuration_confirm_match,
+    configuration_detail,
+    configuration_list,
+    configuration_remove_reviewer,
+    reference_documents,
+    reference_publish,
+)
+
+app_name = "recruitment"
+
+urlpatterns = [
+    path("position-configuration/", configuration_list, name="configuration_list"),
+    path(
+        "position-configuration/references/",
+        reference_documents,
+        name="reference_documents",
+    ),
+    path(
+        "position-configuration/references/<int:pk>/publish/",
+        reference_publish,
+        name="reference_publish",
+    ),
+    path(
+        "position-configuration/<int:pk>/",
+        configuration_detail,
+        name="configuration_detail",
+    ),
+    path(
+        "position-configuration/<int:pk>/match/",
+        configuration_confirm_match,
+        name="configuration_confirm_match",
+    ),
+    path(
+        "position-configuration/<int:pk>/jd/",
+        configuration_confirm_jd,
+        name="configuration_confirm_jd",
+    ),
+    path(
+        "position-configuration/<int:pk>/ai-diff/",
+        configuration_ai_diff,
+        name="configuration_ai_diff",
+    ),
+    path(
+        "position-configuration/<int:pk>/reviewers/",
+        configuration_add_reviewer,
+        name="configuration_add_reviewer",
+    ),
+    path(
+        "position-configuration/<int:pk>/reviewers/<int:link_id>/remove/",
+        configuration_remove_reviewer,
+        name="configuration_remove_reviewer",
+    ),
+    path("positions/", position_list, name="position_list"),
+    path("positions/<int:pk>/", position_detail, name="position_detail"),
+    path("positions/<int:pk>/status/", set_position_status, name="set_position_status"),
+    path(
+        "positions/<int:position_id>/applications/bulk-delete/",
+        bulk_delete_applications,
+        name="bulk_delete_applications",
+    ),
+    path("candidates/<int:pk>/", candidate_detail, name="candidate_detail"),
+    path("applications/<int:pk>/delete/", delete_application, name="delete_application"),
+    path("applications/<int:pk>/pull-resume/", pull_resume, name="pull_resume"),
+    path("resumes/<uuid:pk>/download/", download_resume, name="download_resume"),
+    path("resumes/<uuid:pk>/preview/", preview_resume, name="preview_resume"),
+    path("notifications/", notifications, name="notifications"),
+    path(
+        "notifications/<int:pk>/view/",
+        notification_view,
+        name="notification_view",
+    ),
+    path("sync/", sync_jobs, name="sync_jobs"),
+    path("sync/<int:pk>/cancel/", cancel_sync_job, name="cancel_sync_job"),
+    path("sync/<int:pk>/issues/", sync_job_issues, name="sync_job_issues"),
+    path(
+        "sync/<int:pk>/position-initializations/",
+        position_initializations,
+        name="position_initializations",
+    ),
+    path(
+        "sync/<int:pk>/position-initializations/<int:initialization_id>/retry/",
+        retry_position_initialization,
+        name="retry_position_initialization",
+    ),
+    path(
+        "sync/<int:pk>/position-initializations/<int:initialization_id>/cancel/",
+        cancel_position_initialization,
+        name="cancel_position_initialization",
+    ),
+    path(
+        "sync/<int:pk>/issues/<int:candidate_id>/retry/",
+        retry_sync_issue,
+        name="retry_sync_issue",
+    ),
+    path("recycle-bin/", recycle_bin, name="recycle_bin"),
+    path("recycle-bin/applications/<int:pk>/restore/", restore_application_view, name="restore_application"),
+]

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}用户账号{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>用户账号</h1><p>管理员创建、停用、解锁和重置账号。</p></div>
+  <a class="button primary" href="{% url 'accounts:user_create' %}">创建账号</a>
+</div>
+<section class="panel">
+  <table>
+    <thead><tr><th>账号</th><th>姓名</th><th>角色</th><th>状态</th><th>锁定至</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.username }}</td><td>{{ user.first_name|default:"-" }}</td>
+        <td>{{ user.get_role_display }}</td>
+        <td>{% if user.is_active %}<span class="status success">启用</span>{% else %}<span class="status muted">停用</span>{% endif %}</td>
+        <td>{{ user.locked_until|default:"-" }}</td>
+        <td class="actions">
+          <form method="post" action="{% url 'accounts:user_toggle_active' user.pk %}">{% csrf_token %}<button class="link-button" type="submit">{% if user.is_active %}停用{% else %}启用{% endif %}</button></form>
+          <form method="post" action="{% url 'accounts:user_unlock' user.pk %}">{% csrf_token %}<button class="link-button" type="submit">解锁</button></form>
+          <form method="post" action="{% url 'accounts:user_reset_password' user.pk %}">{% csrf_token %}<button class="link-button danger" type="submit">重置密码</button></form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="6">暂无账号</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

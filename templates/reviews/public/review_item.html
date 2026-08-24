@@ -1,0 +1,95 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>智筛招聘</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260820-review-flow">
+</head>
+<body>
+<main class="public-shell public-review-shell">
+  <div class="page-header public-review-item-header">
+    <div>
+      <span class="report-eyebrow">{{ batch.position }}</span>
+      <h1>{{ item.application.candidate.name }}</h1>
+      <p>负责人：{{ batch.reviewer.name }} · 截止：{{ batch.expires_at|date:"Y-m-d H:i" }}</p>
+    </div>
+  </div>
+
+  {% if success_message %}
+  <div class="messages"><div class="message success">{{ success_message }}</div></div>
+  {% endif %}
+
+  <div class="public-review-workspace">
+    <section class="panel public-review-analysis-card">
+      <div class="panel-header"><h2>AI 分析内容</h2></div>
+      <div class="public-review-analysis-scroll">
+        {% include "reviews/public/_analysis_report.html" %}
+      </div>
+    </section>
+
+    <form method="post" class="panel public-review-decision-card" data-review-item-form>
+      {% csrf_token %}
+      <input type="hidden" name="return_to" value="">
+      <div class="panel-header"><h2>审核结果与备注</h2></div>
+      <div class="grid-two">
+        <label>审核结果
+          <select name="decision">
+            <option value="pending">请选择</option>
+            <option value="approved" {% if item.decision == "approved" %}selected{% endif %}>通过</option>
+            <option value="rejected" {% if item.decision == "rejected" %}selected{% endif %}>不通过</option>
+            <option value="discuss" {% if item.decision == "discuss" %}selected{% endif %}>待讨论</option>
+          </select>
+        </label>
+        <label>备注
+          <textarea name="comment">{{ item.comment }}</textarea>
+        </label>
+      </div>
+      <div class="actions public-review-item-actions">
+        <button class="button primary" name="action" value="save" type="submit" data-save-review>保存审核结果</button>
+        <a class="button secondary" target="_blank" href="{% url 'reviews:public_resume' batch.public_id token item.pk %}">在线查看简历</a>
+        <a class="button secondary" href="{% url 'reviews:public' batch.public_id token %}" data-review-list-return>返回审核列表</a>
+      </div>
+    </form>
+  </div>
+</main>
+<script>
+(() => {
+  const form = document.querySelector("[data-review-item-form]");
+  const returnButton = document.querySelector("[data-review-list-return]");
+  const saveButton = document.querySelector("[data-save-review]");
+  if (!form || !returnButton || !saveButton) return;
+  const decision = form.querySelector("[name='decision']");
+  const comment = form.querySelector("[name='comment']");
+  const returnTo = form.querySelector("[name='return_to']");
+  const initialDecision = decision.value;
+  const initialComment = comment.value;
+  let leaving = false;
+  const hasUnsavedChanges = () =>
+    decision.value !== initialDecision || comment.value !== initialComment;
+
+  form.addEventListener("submit", () => {
+    leaving = true;
+  });
+  returnButton.addEventListener("click", (event) => {
+    if (!hasUnsavedChanges()) return;
+    event.preventDefault();
+    if (window.confirm("是否保存审核结果？")) {
+      returnTo.value = "list";
+      form.requestSubmit(saveButton);
+      return;
+    }
+    leaving = true;
+    window.location.assign(returnButton.href);
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (leaving || !hasUnsavedChanges()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+})();
+</script>
+</body>
+</html>

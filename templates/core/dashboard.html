@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}工作台{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>工作台</h1><p>查看招聘流程的实时状态与待处理事项。</p></div>
+</div>
+<section class="metric-grid">
+  <a class="metric-card" href="{% url 'recruitment:position_list' %}"><span>有效岗位</span><strong>{{ position_count }}</strong></a>
+  <a class="metric-card" href="{% url 'recruitment:position_list' %}"><span>投递记录</span><strong>{{ application_count }}</strong></a>
+  <div class="metric-card"><span>分析处理中</span><strong>{{ pending_analysis_count }}</strong></div>
+  <a class="metric-card" href="{% url 'reviews:list' %}"><span>负责人待审核</span><strong>{{ pending_review_count }}</strong></a>
+  <a class="metric-card" href="{% url 'talent_pool:list' %}"><span>人才库</span><strong>{{ talent_count }}</strong></a>
+  <a class="metric-card" href="{% url 'recruitment:configuration_list' %}?status=pending"><span>待配置岗位</span><strong>{{ pending_position_configuration_count }}</strong></a>
+  <a class="metric-card" href="{% url 'recruitment:configuration_list' %}?status=update_required"><span>需更新岗位</span><strong>{{ update_required_position_count }}</strong></a>
+</section>
+<section class="panel">
+  <div class="panel-header"><h2>最新通知</h2><a href="{% url 'recruitment:notifications' %}">查看全部</a></div>
+  <div class="list">
+    {% for notification in notifications %}
+      <div class="list-row"><div><strong>{{ notification.title }}</strong><p>{{ notification.message }}</p></div><div class="actions"><time>{{ notification.created_at|date:"m-d H:i" }}</time><a class="text-link" href="{% url 'recruitment:notification_view' notification.pk %}">查看</a></div></div>
+    {% empty %}<div class="empty">暂无未读通知</div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

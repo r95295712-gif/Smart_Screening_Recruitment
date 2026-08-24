@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}负责人审核{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>负责人审核</h1><p>跟踪邮件发送、链接有效期和逐份审核结果。</p></div></div>
+<section class="panel" data-refresh-region="review-batches"{% if has_pending_email %} data-auto-refresh="2000"{% endif %}><table><thead><tr><th>岗位</th><th>负责人</th><th>数量</th><th>状态</th><th>邮件</th><th>截止时间</th><th>操作</th></tr></thead><tbody>
+{% for batch in batches %}<tr><td>{{ batch.position }}</td><td>{{ batch.reviewer }}</td><td>{{ batch.items.count }}</td><td>{{ batch.get_status_display }}</td><td>{{ batch.get_email_status_display }}</td><td>{{ batch.expires_at|date:"Y-m-d H:i" }}</td><td class="actions">
+  <a class="text-link" href="{% url 'reviews:detail' batch.pk %}">查看</a>{% if batch.status == "completed" or batch.status == "expired" %}<form method="post" action="{% url 'reviews:reopen' batch.pk %}">{% csrf_token %}<input type="hidden" name="expiry_hours" value="72"><button class="link-button" type="submit">重新开启</button></form>{% elif batch.status != "revoked" %}<form method="post" action="{% url 'reviews:resend' batch.pk %}">{% csrf_token %}<button class="link-button" type="submit">重发</button></form><form method="post" action="{% url 'reviews:revoke' batch.pk %}">{% csrf_token %}<button class="link-button danger" type="submit">撤销</button></form>{% endif %}
+</td></tr>{% empty %}<tr><td colspan="7">暂无审核任务。</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

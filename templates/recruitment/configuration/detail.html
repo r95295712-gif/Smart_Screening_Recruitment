@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ position.name }} · 岗位配置{% endblock %}
+{% block back_url %}{% url 'recruitment:configuration_list' %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{{ position.name }}</h1><p>按分区完成配置，已完成内容可随时返回查看。</p></div>
+  <span class="status {% if state.code == 'ready' %}success{% elif state.code == 'update_required' %}warning{% endif %}" data-configuration-state>{{ state.label }}</span>
+</div>
+<section class="configuration-banner{% if state.can_analyze %} ready{% endif %}" data-configuration-banner{% if not state.blockers %} hidden{% endif %}><div><strong>{% if state.can_analyze %}当前已可进行 AI 分析{% else %}当前还不能开始分析{% endif %}</strong><p data-configuration-blockers>{% if state.blockers %}请完成：{{ state.blockers|join:"、" }}{% endif %}</p></div></section>
+
+<section class="configuration-step">
+  <div class="step-number">1</div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>匹配参考资料岗位</h2><p>这里是把当前北森岗位与参考资料中的岗位建立对应关系。下拉选项全部来自已发布的招聘汇总参考资料；匹配只用于带出参考岗位说明和负责人，不会修改北森岗位名称。</p></div></div>
+    <form method="post" action="{% url 'recruitment:configuration_confirm_match' position.pk %}" class="stack-form" data-async-submit>{% csrf_token %}{{ match_form.as_div }}<div class="actions"><button class="button primary" type="submit">确认匹配</button></div><div class="inline-feedback" data-form-feedback role="status" aria-live="polite"></div></form>
+  </div>
+</section>
+
+<section class="configuration-step">
+  <div class="step-number">2</div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>岗位说明对比与确认</h2><p>两侧内容仅用于核对岗位说明；下方编辑的是最终岗位说明，不是评估依据。评估依据在第 3 步“评估依据与规则”中单独配置。</p></div><form method="post" action="{% url 'recruitment:configuration_ai_diff' position.pk %}" data-loading-text="正在生成岗位说明差异摘要，通常需要几十秒。">{% csrf_token %}<button class="button secondary" type="submit">生成差异摘要</button></form></div>
+    <div class="jd-compare-grid">
+      <div><h3>北森岗位说明</h3><div class="pre-wrap">{{ position.source_jd|default:"暂无内容" }}</div></div>
+      <div><h3>参考资料中的岗位说明</h3><div class="pre-wrap" data-reference-jd>{{ configuration.document_position.jd|default:"暂无对应参考内容" }}</div></div>
+    </div>
+    {% if ai_summary %}<div class="ai-summary"><strong>差异摘要</strong><p>{{ ai_summary }}</p><small>仅供人工核对，不会自动替您做决定。</small></div>{% endif %}
+    <form method="post" action="{% url 'recruitment:configuration_confirm_jd' position.pk %}" class="stack-form configuration-form" data-async-submit>{% csrf_token %}{{ jd_form.as_div }}<button class="button primary" type="submit">确认岗位说明</button><div class="inline-feedback" data-form-feedback role="status" aria-live="polite"></div></form>
+  </div>
+</section>
+
+<section class="configuration-step">
+  <div class="step-number">3</div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>评估依据与规则</h2><p>在这里单独配置硬性要求、评分维度、加分项和分数线。规则草稿可编辑，发布后新分析才会使用该版本。</p></div><div class="actions"><a class="button secondary" href="{% url 'analysis:rule_edit' position.pk %}">手工创建草稿</a><form method="post" action="{% url 'analysis:rule_generate' position.pk %}" data-loading-text="正在生成岗位规则草稿，通常需要几十秒。" data-cancel-url="{% url 'analysis:rule_generation_cancel' position.pk %}">{% csrf_token %}<button class="button primary" type="submit">智能生成草稿</button></form></div></div>
+    <div class="version-list">{% for rule in rule_versions %}<div><strong>规则 V{{ rule.version }}</strong><span>{{ rule.get_status_display }}</span><small>{{ rule.created_at|date:"Y-m-d H:i" }}</small><a class="text-link" href="{% url 'analysis:rule_detail' rule.pk %}">查看</a>{% if rule.status == "draft" %}<a class="text-link" href="{% url 'analysis:rule_edit_version' position.pk rule.pk %}">编辑</a>{% endif %}</div>{% empty %}<div class="empty">尚无评估规则。</div>{% endfor %}</div>
+  </div>
+</section>
+
+<section class="configuration-step">
+  <div class="step-number">4</div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>审核负责人</h2><p>可以使用参考资料自动带出的负责人，也可以人工新增或移除。</p></div></div>
+    <div class="reviewer-list">{% for link in reviewer_links %}<div><div><strong>{{ link.reviewer.name }}</strong><p>{{ link.reviewer.email }} · {{ link.get_source_type_display }}</p></div><form method="post" action="{% url 'recruitment:configuration_remove_reviewer' position.pk link.pk %}">{% csrf_token %}<button class="link-button danger" type="submit">移除</button></form></div>{% empty %}<div class="empty">尚未配置负责人。</div>{% endfor %}</div>
+    <form method="post" action="{% url 'recruitment:configuration_add_reviewer' position.pk %}" class="inline-form">{% csrf_token %}{{ reviewer_form.as_div }}<button class="button secondary" type="submit">新增负责人</button></form>
+  </div>
+</section>
+
+<section class="configuration-step">
+  <div class="step-number">5</div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>可用性与历史记录</h2><p>系统根据岗位说明、已发布规则和有效负责人自动判断。</p></div><span class="status {% if state.can_analyze %}success{% endif %}" data-configuration-state>{{ state.label }}</span></div>
+    <div class="history-grid"><div><h3>岗位说明版本</h3><p class="history-hint">仅内容或来源发生变化时才会生成新版本；共 {{ decision_version_count }} 个版本。</p><div class="history-scroll">{% for decision in decision_versions %}<p>V{{ decision.version }} · {{ decision.get_decision_type_display }} · {{ decision.confirmed_at|date:"Y-m-d H:i" }}{% if decision.is_current %} · 当前{% endif %}</p>{% empty %}<p>暂无记录</p>{% endfor %}</div></div><div><h3>运行检查</h3>{% if state.can_review %}<p>岗位可以开始分析和送审。</p>{% elif state.can_analyze %}<p>岗位可以开始 AI 分析；送审前还需完成：{{ state.blockers|join:"、" }}</p>{% else %}<p>还需完成：{{ state.blockers|join:"、" }}</p>{% endif %}</div></div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>智筛招聘</title><link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260814-ui1"></head>
+<body><main class="public-shell"><section class="panel"><h1>{{ candidate_name }} · 简历预览</h1><p class="muted">原文件无法直接在浏览器预览，以下为系统提取文本，仅供本次审核在线查看。</p><div class="pre-wrap">{{ resume.extracted_text|default:"暂无可预览文本" }}</div></section></main></body></html>
+

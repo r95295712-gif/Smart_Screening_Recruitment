@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}删除投递记录{% endblock %}
+{% block back_url %}{% url 'recruitment:position_detail' application.position_id %}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>删除投递记录</h1><p>{{ application.candidate }} · {{ application.position }}</p></div></div>
+<section class="panel narrow">
+  <p>删除后立即隐藏，管理员可在 3 天内恢复。</p>
+  <form method="post" class="stack-form">{% csrf_token %}{{ form.as_p }}<button class="button danger" type="submit">确认删除</button></form>
+</section>
+{% endblock %}

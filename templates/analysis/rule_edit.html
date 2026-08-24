@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}配置岗位规则{% endblock %}
+{% block back_url %}{% url 'recruitment:configuration_detail' position.pk %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ position.name }} · 规则草稿</h1>
+    <p>这里配置的是候选人评估依据与规则，请用招聘业务语言逐项核对。</p>
+  </div>
+</div>
+
+<div class="rule-edit-layout">
+  <aside class="rule-jd-column">
+    <section class="panel rule-jd-panel">
+      <div class="panel-header">
+        <div><h2>已确认岗位说明</h2><p>此处只读，用于帮助您单独配置右侧的评估依据与规则。</p></div>
+      </div>
+      <div class="pre-wrap rule-jd-content">{{ form.instance.evaluation_jd|default:"暂无已确认的岗位说明" }}</div>
+    </section>
+    {% if jd_diff %}
+    <section class="panel">
+      <details class="configuration-details">
+        <summary>查看北森最新内容与当前依据的差异</summary>
+        <div class="pre-wrap diff">{{ jd_diff }}</div>
+      </details>
+    </section>
+    {% endif %}
+  </aside>
+
+  <section class="panel rule-editor-panel">
+    <form method="post" class="stack-form" data-rule-form>
+      {% csrf_token %}
+      {{ form.hard_requirements }}
+      {{ form.dimensions }}
+      {{ form.bonus_items }}
+
+      {% if form.non_field_errors %}
+        <div class="form-error">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <section class="rule-section" data-rule-editor data-input-id="id_hard_requirements" data-editor-type="requirements">
+        <div class="rule-section-heading">
+          <div><span class="step-chip">1</span><h2>硬性要求</h2><p>候选人必须满足或需要重点核实的条件。</p></div>
+          <button class="button secondary small" type="button" data-add-rule-item>新增要求</button>
+        </div>
+        {{ form.hard_requirements.errors }}
+        <div class="rule-item-list" data-rule-rows></div>
+        <template data-rule-template>
+          <article class="rule-item-card">
+            <div class="rule-item-head"><strong data-row-title>新要求</strong><button class="link-button danger" type="button" data-remove-rule-item>移除</button></div>
+            <label>要求名称<input type="text" data-rule-key="name" placeholder="例如：学历与专业"></label>
+            <label>具体说明<textarea rows="3" data-rule-key="description" placeholder="例如：本科及以上学历，计算机或人工智能相关专业。"></textarea></label>
+          </article>
+        </template>
+      </section>
+
+      <section class="rule-section" data-rule-editor data-input-id="id_dimensions" data-editor-type="dimensions">
+        <div class="rule-section-heading">
+          <div><span class="step-chip">2</span><h2>评分维度</h2><p>设置评估方向和权重，全部权重合计必须为 100。</p></div>
+          <button class="button secondary small" type="button" data-add-rule-item>新增维度</button>
+        </div>
+        {{ form.dimensions.errors }}
+        <div class="weight-summary">当前权重合计：<strong data-weight-total>0</strong><span>/ 100</span></div>
+        <div class="rule-item-list" data-rule-rows></div>
+        <template data-rule-template>
+          <article class="rule-item-card">
+            <div class="rule-item-head"><strong data-row-title>新评分维度</strong><button class="link-button danger" type="button" data-remove-rule-item>移除</button></div>
+            <div class="rule-item-grid">
+              <label>维度名称<input type="text" data-rule-key="name" placeholder="例如：算法与模型能力"></label>
+              <label>权重<input type="number" min="0" max="100" step="1" data-rule-key="weight" placeholder="25"></label>
+            </div>
+            <label>评估说明<textarea rows="3" data-rule-key="description" placeholder="说明该维度主要评估哪些经历和能力。"></textarea></label>
+          </article>
+        </template>
+      </section>
+
+      <section class="rule-section" data-rule-editor data-input-id="id_bonus_items" data-editor-type="bonus">
+        <div class="rule-section-heading">
+          <div><span class="step-chip">3</span><h2>加分项</h2><p>不是必须条件，但具备时可以提高匹配度。</p></div>
+          <button class="button secondary small" type="button" data-add-rule-item>新增加分项</button>
+        </div>
+        {{ form.bonus_items.errors }}
+        <div class="rule-item-list" data-rule-rows></div>
+        <template data-rule-template>
+          <article class="rule-item-card">
+            <div class="rule-item-head"><strong data-row-title>新加分项</strong><button class="link-button danger" type="button" data-remove-rule-item>移除</button></div>
+            <label>加分项名称<input type="text" data-rule-key="name" placeholder="例如：大数据与分布式计算"></label>
+            <label>具体说明<textarea rows="3" data-rule-key="description" placeholder="例如：熟悉 Hadoop、Spark 等大数据处理平台。"></textarea></label>
+          </article>
+        </template>
+      </section>
+
+      <section class="rule-section">
+        <div class="rule-section-heading">
+          <div><span class="step-chip">4</span><h2>推荐分数线</h2><p>系统根据总分给出优先推荐、建议复核或暂不优先。</p></div>
+        </div>
+        <div class="threshold-grid">
+          <label>{{ form.priority_threshold.label }}{{ form.priority_threshold }}<small>{{ form.priority_threshold.help_text }}</small>{{ form.priority_threshold.errors }}</label>
+          <label>{{ form.review_threshold.label }}{{ form.review_threshold }}<small>{{ form.review_threshold.help_text }}</small>{{ form.review_threshold.errors }}</label>
+        </div>
+        <div class="threshold-preview">
+          <span class="status success">达到优先推荐分：优先推荐</span>
+          <span class="status warning">达到建议复核分：建议复核</span>
+          <span class="status">低于建议复核分：暂不优先</span>
+        </div>
+      </section>
+
+      <div class="rule-form-actions">
+        <button class="button primary" type="submit">保存草稿</button>
+        {% if rule %}
+          <button class="button secondary" type="submit" formaction="{% url 'analysis:rule_publish' rule.pk %}">确认发布</button>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

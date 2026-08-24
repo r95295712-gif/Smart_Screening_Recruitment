@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}AI 分析报告{% endblock %}
+{% block back_url %}{% url 'analysis:job_detail' report.item.job_id %}{% endblock %}
+{% block content %}
+<div class="page-header report-page-header">
+  <div>
+    <h1>{{ report.item.application.candidate }} · AI 分析报告</h1>
+    <p>{{ report.item.application.position }} · 规则 V{{ report.item.rule_version.version }} · {{ report.model_version }}</p>
+  </div>
+  <a class="button secondary" href="{% url 'analysis:report_pdf' report.pk %}">导出 PDF</a>
+</div>
+
+<section class="report-summary">
+  <div class="report-score-card">
+    <div class="score-ring" style="--score: {{ report.score }}"><strong>{{ report.score }}</strong><span>匹配分</span></div>
+    <div>
+      <span class="report-eyebrow">综合评估</span>
+      <h2>{{ report.get_rating_display }}</h2>
+      <p>AI 结果仅作为筛选参考，最终判断由 HR 和岗位负责人完成。</p>
+    </div>
+  </div>
+  <div class="report-meta-card">
+    <span>评估岗位</span>
+    <strong>{{ report.item.application.position }}</strong>
+    <small>依据岗位规则 V{{ report.item.rule_version.version }}</small>
+  </div>
+  <div class="report-meta-card">
+    <span>分析时间</span>
+    <strong>{{ report.created_at|date:"Y-m-d H:i" }}</strong>
+    <small>{{ report.model_version }}</small>
+  </div>
+</section>
+
+<section class="panel report-section">
+  <div class="panel-header report-section-heading">
+    <div><span class="report-section-index">01</span><div><h2>岗位要求核对</h2><p>逐项核对硬性条件，并展示简历依据和待确认事项。</p></div></div>
+  </div>
+  <div class="requirement-grid">
+    {% for row in presentation.hard_requirements %}
+    <article class="requirement-card">
+      <div class="requirement-title"><h3>{{ row.title }}</h3><span class="report-status {{ row.status_class }}">{{ row.status }}</span></div>
+      {% if row.evidence %}<div class="report-detail"><span>简历依据</span><p>{{ row.evidence }}</p></div>{% endif %}
+      {% if row.note %}<div class="report-detail note"><span>分析说明</span><p>{{ row.note }}</p></div>{% endif %}
+    </article>
+    {% empty %}<div class="empty">暂无岗位要求核对结果。</div>{% endfor %}
+  </div>
+</section>
+
+<section class="panel report-section">
+  <div class="panel-header report-section-heading">
+    <div><span class="report-section-index">02</span><div><h2>维度评分</h2><p>得分按照当前岗位规则的各项权重计算。</p></div></div>
+  </div>
+  <div class="dimension-list">
+    {% for row in presentation.dimensions %}
+    <article class="dimension-card">
+      <div class="dimension-heading">
+        <div><h3>{{ row.title }}</h3>{% if row.weight %}<span>权重 {{ row.weight }}</span>{% endif %}</div>
+        <strong>{{ row.score_text }}</strong>
+      </div>
+      <div class="dimension-track"><span style="width: {{ row.percent }}%"></span></div>
+      {% if row.evidence %}<div class="report-detail"><span>评分依据</span><p>{{ row.evidence }}</p></div>{% endif %}
+      {% if row.assessment %}<div class="report-detail note"><span>综合判断</span><p>{{ row.assessment }}</p></div>{% endif %}
+    </article>
+    {% empty %}<div class="empty">暂无维度评分。</div>{% endfor %}
+  </div>
+</section>
+
+<div class="report-insight-grid">
+  <section class="panel report-section insight-panel strength-panel">
+    <div class="panel-header"><h2>优势</h2><span class="insight-count">{{ presentation.strengths|length }}</span></div>
+    <div class="insight-list">
+      {% for row in presentation.strengths %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+      {% empty %}<div class="empty">无明确优势。</div>{% endfor %}
+    </div>
+  </section>
+  <section class="panel report-section insight-panel risk-panel">
+    <div class="panel-header"><h2>风险与不足</h2><span class="insight-count">{{ presentation.risks|length }}</span></div>
+    <div class="insight-list">
+      {% for row in presentation.risks %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+      {% empty %}<div class="empty">无明确风险。</div>{% endfor %}
+    </div>
+  </section>
+  <section class="panel report-section insight-panel missing-panel">
+    <div class="panel-header"><h2>信息不足</h2><span class="insight-count">{{ presentation.missing_information|length }}</span></div>
+    <div class="insight-list">
+      {% for row in presentation.missing_information %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+      {% empty %}<div class="empty">暂无需要补充的信息。</div>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="panel report-section">
+  <div class="panel-header report-section-heading">
+    <div><span class="report-section-index">03</span><div><h2>面试建议</h2><p>用于帮助面试人员快速核实关键信息，不代表自动录用或淘汰。</p></div></div>
+  </div>
+  <div class="interview-grid">
+    <div>
+      <h3>重点核实</h3>
+      <div class="numbered-list">
+        {% for row in presentation.interview_focus %}<article><span>{{ forloop.counter }}</span><div><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</div></article>
+        {% empty %}<div class="empty">暂无特别关注点。</div>{% endfor %}
+      </div>
+    </div>
+    <div>
+      <h3>问题参考</h3>
+      <div class="numbered-list">
+        {% for row in presentation.interview_questions %}<article><span>{{ forloop.counter }}</span><div><strong>{{ row.title }}</strong>{% if row.detail %}<p>提问目的：{{ row.detail }}</p>{% endif %}</div></article>
+        {% empty %}<div class="empty">暂无问题建议。</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel report-section report-notes">
+  <div class="panel-header"><div><h2>人工补充备注</h2><p>补充说明、纠正 AI 判断或记录最终人工结论。</p></div></div>
+  <div class="list">
+    {% for note in report.notes.all %}<div class="list-row"><div><strong>{{ note.author.username }} · {{ note.get_note_type_display }}</strong><p>{{ note.content }}</p></div><time>{{ note.created_at|date:"Y-m-d H:i" }}</time></div>
+    {% empty %}<div class="empty">暂无备注。</div>{% endfor %}
+  </div>
+  <form method="post" class="stack-form report-note-form">{% csrf_token %}{{ form.as_div }}<button class="button primary" type="submit">添加备注</button></form>
+</section>
+{% endblock %}

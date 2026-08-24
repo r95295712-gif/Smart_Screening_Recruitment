@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block back_url %}{% url 'accounts:user_list' %}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>{{ title }}</h1><p>新账号首次登录后必须修改密码。</p></div></div>
+<section class="panel narrow">
+  <form method="post" class="stack-form">{% csrf_token %}{{ form.as_p }}<button class="button primary" type="submit">创建</button></form>
+</section>
+{% endblock %}

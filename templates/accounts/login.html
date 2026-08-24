@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}登录 · 智筛招聘{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <div class="auth-logo">智</div>
+  <h1>智筛招聘</h1>
+  <p>使用系统账号登录招聘智能分析平台</p>
+  <form method="post" class="stack-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label>账号{{ form.username }}</label>
+    <label>密码{{ form.password }}</label>
+    <button class="button primary" type="submit">登录</button>
+  </form>
+</section>
+{% endblock %}

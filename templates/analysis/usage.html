@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}模型用量{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>模型用量与费用</h1><p>仅管理员可见，费用为按配置单价计算的预估值。</p></div></div>
+<div class="metric-grid compact"><div class="metric-card"><span>输入 Token</span><strong>{{ totals.input_tokens|default:0 }}</strong></div><div class="metric-card"><span>输出 Token</span><strong>{{ totals.output_tokens|default:0 }}</strong></div><div class="metric-card"><span>预估费用</span><strong>{{ totals.estimated_cost|default:0 }}</strong></div></div>
+<section class="panel"><table><thead><tr><th>时间</th><th>模型</th><th>岗位</th><th>用户</th><th>输入</th><th>输出</th><th>费用</th></tr></thead><tbody>{% for row in usage %}<tr><td>{{ row.created_at|date:"Y-m-d H:i" }}</td><td>{{ row.model_version }}</td><td>{{ row.position|default:"-" }}</td><td>{{ row.user|default:"-" }}</td><td>{{ row.input_tokens }}</td><td>{{ row.output_tokens }}</td><td>{{ row.estimated_cost }}</td></tr>{% empty %}<tr><td colspan="7">暂无调用记录。</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

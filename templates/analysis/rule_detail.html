@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ rule.position.name }} · 规则 V{{ rule.version }}{% endblock %}
+{% block back_url %}{% url 'analysis:rule_list' %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ rule.position.name }} · 规则 V{{ rule.version }}</h1>
+    <p>查看已保存的岗位评估依据与规则内容。</p>
+  </div>
+  <span class="status {% if rule.status == 'published' %}success{% elif rule.status == 'draft' %}warning{% endif %}">{{ rule.get_status_display }}</span>
+</div>
+
+<section class="panel">
+  <dl class="detail-list">
+    <dt>创建人</dt><dd>{{ rule.created_by|default:"-" }}</dd>
+    <dt>创建时间</dt><dd>{{ rule.created_at|date:"Y-m-d H:i" }}</dd>
+    <dt>发布人</dt><dd>{{ rule.published_by|default:"-" }}</dd>
+    <dt>发布时间</dt><dd>{{ rule.published_at|date:"Y-m-d H:i"|default:"-" }}</dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>岗位说明快照</h2><p>生成该版本规则时使用的已确认岗位说明。</p></div></div>
+  <div class="pre-wrap">{{ rule.evaluation_jd|default:"暂无内容" }}</div>
+</section>
+
+<div class="rule-detail-grid">
+  <section class="panel">
+    <div class="panel-header"><h2>硬性要求</h2></div>
+    <div class="rule-read-list">{% for item in rule.hard_requirements %}<article><strong>{{ item.name }}</strong><p>{{ item.description|default:"-" }}</p></article>{% empty %}<div class="empty">未配置硬性要求。</div>{% endfor %}</div>
+  </section>
+  <section class="panel">
+    <div class="panel-header"><h2>加分项</h2></div>
+    <div class="rule-read-list">{% for item in rule.bonus_items %}<article><strong>{{ item.name }}</strong><p>{{ item.description|default:"-" }}</p></article>{% empty %}<div class="empty">未配置加分项。</div>{% endfor %}</div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-header"><h2>评分维度</h2></div>
+  <div class="rule-read-list">{% for item in rule.dimensions %}<article class="rule-read-dimension"><div><strong>{{ item.name }}</strong><p>{{ item.description|default:"-" }}</p></div><span class="status">{{ item.weight }}%</span></article>{% empty %}<div class="empty">未配置评分维度。</div>{% endfor %}</div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>推荐分数线</h2></div>
+  <div class="threshold-preview">
+    <span class="status success">{{ rule.rating_thresholds.priority|default:80 }} 分及以上：优先推荐</span>
+    <span class="status warning">{{ rule.rating_thresholds.review|default:60 }} 分及以上：建议复核</span>
+    <span class="status">低于 {{ rule.rating_thresholds.review|default:60 }} 分：暂不优先</span>
+  </div>
+</section>
+{% endblock %}

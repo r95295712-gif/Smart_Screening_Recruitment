@@ -1,0 +1,100 @@
+<section class="public-analysis-report" aria-label="{{ item.application.candidate.name }}的 AI 分析报告">
+  <div class="public-report-heading">
+    <div>
+      <span class="report-eyebrow">AI 分析参考</span>
+      <h3>候选人与岗位的匹配情况</h3>
+      <p>以下内容仅供审核参考，最终判断请结合简历和面试情况作出。</p>
+    </div>
+    {% if item.analysis_report %}
+    <div class="public-report-score">
+      <strong>{{ item.analysis_report.score }}</strong>
+      <span>匹配分</span>
+    </div>
+    <span class="report-status neutral">{{ item.analysis_report.get_rating_display }}</span>
+    {% endif %}
+  </div>
+
+  {% if item.analysis_report %}
+  <div class="public-report-section">
+    <div class="report-section-heading">
+      <div><span class="report-section-index">01</span><div><h3>岗位要求核对</h3><p>查看简历中能够支持判断的内容和待确认事项。</p></div></div>
+    </div>
+    <div class="requirement-grid">
+      {% for row in item.analysis_presentation.hard_requirements %}
+      <article class="requirement-card">
+        <div class="requirement-title"><h3>{{ row.title }}</h3><span class="report-status {{ row.status_class }}">{{ row.status }}</span></div>
+        {% if row.evidence %}<div class="report-detail"><span>简历依据</span><p>{{ row.evidence }}</p></div>{% endif %}
+        {% if row.note %}<div class="report-detail note"><span>分析说明</span><p>{{ row.note }}</p></div>{% endif %}
+      </article>
+      {% empty %}<div class="empty">暂无岗位要求核对结果。</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="public-report-section">
+    <div class="report-section-heading">
+      <div><span class="report-section-index">02</span><div><h3>维度评分</h3><p>按本岗位当前评估要求展示各项判断依据。</p></div></div>
+    </div>
+    <div class="dimension-list">
+      {% for row in item.analysis_presentation.dimensions %}
+      <article class="dimension-card">
+        <div class="dimension-heading">
+          <div><h3>{{ row.title }}</h3>{% if row.weight %}<span>权重 {{ row.weight }}</span>{% endif %}</div>
+          <strong>{{ row.score_text }}</strong>
+        </div>
+        <div class="dimension-track"><span style="width: {{ row.percent }}%"></span></div>
+        {% if row.evidence %}<div class="report-detail"><span>评分依据</span><p>{{ row.evidence }}</p></div>{% endif %}
+        {% if row.assessment %}<div class="report-detail note"><span>综合判断</span><p>{{ row.assessment }}</p></div>{% endif %}
+      </article>
+      {% empty %}<div class="empty">暂无维度评分。</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="report-insight-grid public-insight-grid">
+    <section class="report-section insight-panel strength-panel">
+      <div class="panel-header"><h3>优势</h3><span class="insight-count">{{ item.analysis_presentation.strengths|length }}</span></div>
+      <div class="insight-list">
+        {% for row in item.analysis_presentation.strengths %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+        {% empty %}<div class="empty">无明确优势。</div>{% endfor %}
+      </div>
+    </section>
+    <section class="report-section insight-panel risk-panel">
+      <div class="panel-header"><h3>风险与不足</h3><span class="insight-count">{{ item.analysis_presentation.risks|length }}</span></div>
+      <div class="insight-list">
+        {% for row in item.analysis_presentation.risks %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+        {% empty %}<div class="empty">无明确风险。</div>{% endfor %}
+      </div>
+    </section>
+    <section class="report-section insight-panel missing-panel">
+      <div class="panel-header"><h3>信息不足</h3><span class="insight-count">{{ item.analysis_presentation.missing_information|length }}</span></div>
+      <div class="insight-list">
+        {% for row in item.analysis_presentation.missing_information %}<article class="insight-item"><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</article>
+        {% empty %}<div class="empty">暂无需要补充的信息。</div>{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="public-report-section">
+    <div class="report-section-heading">
+      <div><span class="report-section-index">03</span><div><h3>面试建议</h3><p>用于快速核实影响判断的关键信息。</p></div></div>
+    </div>
+    <div class="interview-grid">
+      <div>
+        <h3>重点核实</h3>
+        <div class="numbered-list">
+          {% for row in item.analysis_presentation.interview_focus %}<article><span>{{ forloop.counter }}</span><div><strong>{{ row.title }}</strong>{% if row.detail %}<p>{{ row.detail }}</p>{% endif %}</div></article>
+          {% empty %}<div class="empty">暂无特别关注点。</div>{% endfor %}
+        </div>
+      </div>
+      <div>
+        <h3>问题参考</h3>
+        <div class="numbered-list">
+          {% for row in item.analysis_presentation.interview_questions %}<article><span>{{ forloop.counter }}</span><div><strong>{{ row.title }}</strong>{% if row.detail %}<p>提问目的：{{ row.detail }}</p>{% endif %}</div></article>
+          {% empty %}<div class="empty">暂无问题建议。</div>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">本次送审未保存 AI 分析报告，请结合简历完成审核。</div>
+  {% endif %}
+</section>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}分析任务{% endblock %}
+{% block back_url %}{% url 'recruitment:position_detail' job.position_id %}{% endblock %}
+{% block content %}
+<div data-refresh-region="analysis-job"{% if is_active %} data-auto-refresh="3000"{% endif %}>
+<div class="page-header"><div><h1>分析任务 #{{ job.pk }}</h1><p>{{ job.position }} · {{ job.get_status_display }} · 已完成 {{ completed_count }}/{{ job.total_count }} · 成功 {{ job.success_count }}</p></div><div class="actions">{% if job.status == "pending" or job.status == "running" %}<form method="post" action="{% url 'analysis:job_cancel' job.pk %}">{% csrf_token %}<button class="button secondary" type="submit">取消任务</button></form>{% endif %}<a class="button secondary" href="{% url 'analysis:job_excel' job.pk %}">导出 Excel</a></div></div>
+<section class="panel task-progress-panel">
+  <div class="progress-summary"><strong>{% if is_active %}AI 正在逐份分析简历{% else %}任务{{ job.get_status_display }}{% endif %}</strong><span>{{ progress_percent }}%</span></div>
+  <div class="progress-track"><span style="width: {{ progress_percent }}%"></span></div>
+  <p class="muted">{% if is_active %}页面每 3 秒自动更新，可以离开本页，任务会继续执行。{% elif job.status == "failed" %}失败原因已列在下方。修复问题后，可返回岗位重新选择这些简历进行分析。{% else %}共 {{ job.total_count }} 份，成功 {{ job.success_count }} 份，失败 {{ job.failure_count }} 份。{% endif %}</p>
+</section>
+<section class="panel"><table>
+  <thead><tr><th>候选人</th><th>状态</th><th>分数</th><th>推荐等级</th><th>失败原因</th><th>操作</th></tr></thead>
+  <tbody>{% for item in job.items.all %}
+    {% if item.reused_report %}{% with report=item.reused_report %}
+    <tr><td>{{ item.application.candidate }}</td><td>复用已有报告</td><td>{{ report.score }}</td><td>{{ report.get_rating_display }}</td><td>-</td><td><a class="text-link" href="{% url 'analysis:report_detail' report.pk %}">查看报告</a></td></tr>
+    {% endwith %}{% else %}
+    <tr><td>{{ item.application.candidate }}</td><td>{% if item.status == "model_error" %}分析执行异常{% else %}{{ item.get_status_display }}{% endif %}</td><td>{% if item.report %}{{ item.report.score }}{% else %}-{% endif %}</td><td>{% if item.report %}{{ item.report.get_rating_display }}{% else %}-{% endif %}</td><td>{{ item.error_message|default:"-" }}</td><td>{% if item.report %}<a class="text-link" href="{% url 'analysis:report_detail' item.report.pk %}">查看报告</a>{% endif %}</td></tr>
+    {% endif %}
+  {% endfor %}</tbody>
+</table></section>
+</div>
+{% endblock %}

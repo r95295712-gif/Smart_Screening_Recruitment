@@ -1,0 +1,143 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DATABASE_URL: postgres://smart_screening:${POSTGRES_PASSWORD}@db:5432/smart_screening
+      REDIS_URL: redis://redis:6379/0
+      USE_S3_STORAGE: "true"
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      LOCAL_BACKGROUND_TASKS: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/').read()\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: celery -A config worker -l INFO
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DATABASE_URL: postgres://smart_screening:${POSTGRES_PASSWORD}@db:5432/smart_screening
+      REDIS_URL: redis://redis:6379/0
+      USE_S3_STORAGE: "true"
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      RUN_STARTUP_MIGRATIONS: "false"
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      LOCAL_BACKGROUND_TASKS: "false"
+    depends_on:
+      web:
+        condition: service_healthy
+
+  beat:
+    build: .
+    restart: unless-stopped
+    command: celery -A config beat -l INFO
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DATABASE_URL: postgres://smart_screening:${POSTGRES_PASSWORD}@db:5432/smart_screening
+      REDIS_URL: redis://redis:6379/0
+      USE_S3_STORAGE: "true"
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      RUN_STARTUP_MIGRATIONS: "false"
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      LOCAL_BACKGROUND_TASKS: "false"
+    depends_on:
+      web:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smart_screening
+      POSTGRES_USER: smart_screening
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smart_screening"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    env_file: ${ENV_FILE:-.env}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 "$${AWS_ACCESS_KEY_ID}" "$${AWS_SECRET_ACCESS_KEY}" &&
+        mc mb --ignore-existing "local/$${AWS_STORAGE_BUCKET_NAME}"
+
+  backup:
+    build: .
+    entrypoint: ["/bin/sh", "/app/docker/backup/backup.sh"]
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      PGHOST: db
+      PGDATABASE: smart_screening
+      PGUSER: smart_screening
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      RUN_STARTUP_MIGRATIONS: "false"
+    volumes:
+      - ./backups:/backups
+    profiles: ["operations"]
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+

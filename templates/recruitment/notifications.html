@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}站内通知{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>站内通知</h1><p>同步、分析和审核结果统一在此展示。</p></div><form method="post">{% csrf_token %}<button class="button secondary" type="submit">全部已读</button></form></div>
+<section class="panel"><div class="list">{% for item in notifications %}<div class="list-row"><div><strong>{{ item.title }}</strong><p>{{ item.message }}</p></div><div class="actions"><time>{{ item.created_at|date:"Y-m-d H:i" }}</time><a class="text-link" href="{% url 'recruitment:notification_view' item.pk %}">查看</a></div></div>{% empty %}<div class="empty">暂无通知</div>{% endfor %}</div></section>
+{% endblock %}

@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}推荐到岗位{% endblock %}
+{% block back_url %}{% url 'talent_pool:detail' membership.pk %}{% endblock %}
+{% block content %}<div class="page-header"><div><h1>推荐 {{ membership.candidate }}</h1><p>创建本地“人才库推荐”投递，不写回北森。</p></div></div><section class="panel narrow"><form method="post" class="stack-form">{% csrf_token %}{{ form.as_div }}<button class="button primary" type="submit">确认推荐</button></form></section>{% endblock %}
