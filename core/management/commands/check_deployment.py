@@ -171,11 +171,12 @@ class Command(BaseCommand):
 
         try:
             from openai import OpenAI
+            timeout = getattr(settings, "MODEL_REQUEST_TIMEOUT", 30) or 30
             client = OpenAI(
                 api_key=settings.MODEL_API_KEY,
                 base_url=settings.MODEL_BASE_URL or None,
-                timeout=10,
-                max_retries=0,
+                timeout=timeout,
+                max_retries=1,
             )
             response = client.chat.completions.create(
                 model=settings.MODEL_NAME,
