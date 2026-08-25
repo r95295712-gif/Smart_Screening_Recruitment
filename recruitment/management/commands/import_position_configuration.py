@@ -96,12 +96,17 @@ class Command(BaseCommand):
         docx_path = root / "docs" / "招聘信息汇总.docx"
         xlsx_candidates = [
             path
-            for path in (
-                root
-                / "outputs"
-                / "01a00e3e-98b7-76d2-99a3-66ae41444da9"
-            ).glob("*北森标准.xlsx")
-            if not path.name.startswith("~$")
+            for path in [
+                root / "docs" / "招聘岗位负责人及北森匹配_北森标准.xlsx",
+                *(root / "docs").glob("*北森标准*.xlsx"),
+                *(root / "docs").glob("*负责人*.xlsx"),
+                *(
+                    root
+                    / "outputs"
+                    / "01a00e3e-98b7-76d2-99a3-66ae41444da9"
+                ).glob("*北森标准.xlsx"),
+            ]
+            if path.exists() and not path.name.startswith("~$")
         ]
         data_path = root / "analysis" / "recruitment_summary" / "data.json"
         decisions_path = (

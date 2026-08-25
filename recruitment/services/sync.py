@@ -22,10 +22,12 @@ from recruitment.models import (
     Candidate,
     ExclusionMarker,
     Position,
+    PositionJdDecision,
     ResumeVersion,
     SyncJob,
 )
 from recruitment.services.common import notify
+from recruitment.services.configuration import confirm_jd
 from recruitment.services.files import attach_standard_pdf, save_resume_bytes
 from recruitment.services.parsing import parse_resume
 
@@ -315,6 +317,7 @@ def upsert_positions(payload):
             ),
             "position_type": position_type,
             "source_jd": position_jd(item),
+            "evaluation_jd": position.evaluation_jd if position and position.evaluation_jd else position_jd(item),
             "source_payload": item,
             "status_source": Position.StatusSource.BEISEN,
             "last_synced_at": timezone.now(),
@@ -585,7 +588,7 @@ def run_sync_job(sync_job, client):
             for position in synced_positions:
                 if sync_cancellation_requested(sync_job.pk):
                     raise SyncCancelled
-                if position.rule_versions.exists() or position.jd_decisions.exists():
+                if position.rule_versions.exists():
                     continue
                 initialization, created = (
                     PositionRuleInitialization.objects.get_or_create(

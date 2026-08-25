@@ -189,9 +189,7 @@ def create_initial_published_rule(position, actor, gateway=None, should_cancel=N
     existing = position.rule_versions.order_by("-version").first()
     if existing:
         return existing, False
-    if position.jd_decisions.exists():
-        raise RuleDraftError("该岗位已经确认过岗位说明，不再自动生成初始规则。")
-    effective_jd = (position.source_jd or "").strip()
+    effective_jd = (position.evaluation_jd or position.source_jd or "").strip()
     if not effective_jd:
         raise RuleDraftError("北森岗位说明为空，无法自动生成初始规则 V0。")
 
@@ -208,13 +206,13 @@ def create_initial_published_rule(position, actor, gateway=None, should_cancel=N
         existing = locked_position.rule_versions.order_by("-version").first()
         if existing:
             return existing, False
-        if locked_position.jd_decisions.exists():
-            raise RuleDraftError("该岗位已经确认过岗位说明，不再自动生成初始规则。")
-        decision = confirm_jd(
-            locked_position,
-            PositionJdDecision.DecisionType.BEISEN,
-            actor,
-        )
+        decision = locked_position.jd_decisions.filter(is_current=True).first()
+        if not decision:
+            decision = confirm_jd(
+                locked_position,
+                PositionJdDecision.DecisionType.BEISEN,
+                actor,
+            )
         rule = PositionRuleVersion.objects.create(
             position=locked_position,
             version=0,
