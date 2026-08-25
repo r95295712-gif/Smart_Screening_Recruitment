@@ -5,6 +5,11 @@
 <div class="page-header">
   <div><h1>{{ batch.position }} · 审核结果</h1><p>{{ batch.reviewer }} · {{ batch.get_status_display }}</p></div>
   <div class="actions">
+    {% if token %}
+      <a class="button primary small" target="_blank" href="{% url 'reviews:public' batch.public_id token %}">打开在线审核</a>
+      <button class="button secondary small" type="button" onclick="navigator.clipboard.writeText('{{ review_url|escapejs }}').then(() => alert('审核链接已复制到剪贴板！'))">复制审核链接</button>
+    {% endif %}
+    <a class="button secondary small" href="javascript:location.reload();">刷新</a>
     <form method="post" action="{% url 'reviews:delete' batch.pk %}" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
       {% csrf_token %}
       <button class="button danger small" type="submit">删除审核批次</button>
@@ -14,7 +19,8 @@
 <section class="panel">
   <dl class="detail-list">
     <dt>负责人</dt><dd>{{ batch.reviewer }}</dd>
-    <dt>邮件状态</dt><dd>{{ batch.get_email_status_display }}</dd>
+    <dt>邮件状态</dt><dd><span class="status-badge {% if batch.email_status == 'sent' %}status-success{% elif batch.email_status == 'failed' %}status-danger{% else %}status-warning{% endif %}">{{ batch.get_email_status_display }}</span></dd>
+    <dt>审核链接</dt><dd><a class="text-link" target="_blank" href="{% url 'reviews:public' batch.public_id token %}"><strong>点击打开审核页面 ↗</strong></a> <span class="muted" style="font-size: 12px; margin-left: 8px;">({{ review_url }})</span></dd>
     <dt>创建时间</dt><dd>{{ batch.created_at|date:"Y-m-d H:i" }}</dd>
     <dt>截止时间</dt><dd>{{ batch.expires_at|date:"Y-m-d H:i" }}</dd>
   </dl>
@@ -22,12 +28,20 @@
 <section class="panel">
   <div class="panel-header">
     <h2>逐份审核结果</h2>
-    {% if importable_count %}
-      <form method="post" action="{% url 'reviews:add_approved_batch_to_talent' batch.pk %}">
-        {% csrf_token %}
-        <button class="button primary" type="submit" onclick="return confirm('确认将 {{ importable_count }} 名已通过候选人导入人才库吗？')">一键导入人才库（{{ importable_count }}人）</button>
-      </form>
-    {% endif %}
+    <div class="actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+      {% if importable_count %}
+        <form method="post" action="{% url 'reviews:add_approved_batch_to_talent' batch.pk %}">
+          {% csrf_token %}
+          <button class="button primary" type="submit" onclick="return confirm('确认将 {{ importable_count }} 名已通过候选人导入人才库吗？')">一键导入人才库（{{ importable_count }}人）</button>
+        </form>
+      {% endif %}
+      {% if clearable_rejected_count %}
+        <form method="post" action="{% url 'reviews:clear_rejected_batch' batch.pk %}">
+          {% csrf_token %}
+          <button class="button danger" type="submit" onclick="return confirm('确认清空本批次中 {{ clearable_rejected_count }} 名未通过候选人的相关数据吗？数据将移入回收站并在后台保留3天，期间未恢复将自动彻底清理。')">一键清理</button>
+        </form>
+      {% endif %}
+    </div>
   </div>
   <table>
     <thead><tr><th>候选人</th><th>审核结果</th><th>备注</th><th>提交状态</th><th>提交时间</th><th>操作</th></tr></thead>
@@ -46,6 +60,13 @@
             <form method="post" action="{% url 'reviews:add_approved_to_talent' batch.pk item.pk %}">
               {% csrf_token %}
               <button class="button primary small" type="submit">导入人才库</button>
+            </form>
+          {% elif item.is_application_deleted %}
+            <a class="text-link muted" href="{% url 'recruitment:recycle_bin' %}" title="数据已移入回收站，保留3天，期满自动清理">已放入回收站 (3天后清理)</a>
+          {% elif item.can_clear_rejected %}
+            <form method="post" action="{% url 'reviews:clear_rejected_item' batch.pk item.pk %}" onsubmit="return confirm('确定要清空该候选人的相关数据并移入回收站吗？（后台保留3天）');">
+              {% csrf_token %}
+              <button class="button danger small" type="submit">清空数据</button>
             </form>
           {% else %}
             <span class="muted">-</span>

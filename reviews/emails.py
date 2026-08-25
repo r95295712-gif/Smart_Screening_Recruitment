@@ -7,16 +7,18 @@ from django.utils.html import escape
 from .services import token_for_batch
 
 
-def public_review_url(batch):
-    return (
-        f"{settings.PUBLIC_REVIEW_BASE_URL.rstrip('/')}"
-        f"/reviews/public/{batch.public_id}/{token_for_batch(batch)}/"
-    )
+def public_review_url(batch, request=None):
+    if request:
+        base = request.build_absolute_uri("/").rstrip("/")
+    else:
+        base = settings.PUBLIC_REVIEW_BASE_URL.rstrip("/")
+    return f"{base}/reviews/public/{batch.public_id}/{token_for_batch(batch)}/"
 
 
 def send_review_email(batch):
     review_url = public_review_url(batch)
-    subject = f"【智筛招聘】{batch.position} 待审核简历"
+    created_time_str = batch.created_at.strftime("%m-%d %H:%M") if batch.created_at else ""
+    subject = f"【智筛招聘】{batch.position} 待审核简历" + (f"（{batch.reviewer.name} · {created_time_str}）" if created_time_str else f"（{batch.reviewer.name}）")
     body = "\n".join(
         [
             f"{batch.reviewer.name}，您好：",
@@ -57,11 +59,25 @@ def send_review_email(batch):
         if display_name
         else f"智筛招聘 <{address or configured_from}>"
     )
+    headers = {
+        "X-Priority": "1",
+        "Importance": "high",
+        "X-MSMail-Priority": "High",
+        "Auto-Submitted": "auto-generated",
+        "X-Auto-Response-Suppress": "All",
+    }
+    reply_to = (
+        [batch.created_by.email]
+        if getattr(batch.created_by, "email", None)
+        else None
+    )
     message = EmailMultiAlternatives(
-        subject,
-        body,
-        from_email,
-        [batch.reviewer.email],
+        subject=subject,
+        body=body,
+        from_email=from_email,
+        to=[batch.reviewer.email],
+        reply_to=reply_to,
+        headers=headers,
     )
     message.attach_alternative(html_body, "text/html")
     return message.send(fail_silently=False)

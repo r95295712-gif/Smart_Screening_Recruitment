@@ -26,12 +26,12 @@
   <a class="button secondary" href="{% url 'recruitment:configuration_list' %}">查看岗位配置</a>
 </section>
 
-<div data-refresh-region="sync-jobs"{% if has_active_jobs %} data-auto-refresh="5000"{% endif %}>
+<div data-refresh-region="sync-jobs">
   {% if has_active_jobs %}
   <section class="panel task-progress-panel">
-    <div class="progress-summary"><strong>同步或岗位初始化任务正在执行</strong><span>自动更新中</span></div>
+    <div class="progress-summary"><strong>同步或岗位初始化任务正在执行</strong><span>静默处理中</span></div>
     <div class="progress-track indeterminate"><span></span></div>
-    <p class="muted">页面每 5 秒自动更新。北森数据同步与岗位规则 V0 生成相互独立，规则生成不会阻塞同步完成。</p>
+    <p class="muted">北森数据同步与岗位规则 V0 生成在后台执行中，可点击右上角按钮随时刷新查看最新状态。</p>
   </section>
   {% endif %}
 

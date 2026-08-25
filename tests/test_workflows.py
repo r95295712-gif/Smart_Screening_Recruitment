@@ -191,7 +191,9 @@ class WorkflowFixtureMixin:
         return rule
 
     def mark_analyzed(self, application):
-        rule = self.create_rule(application.position)
+        rule = application.position.rule_versions.filter(status=PositionRuleVersion.Status.PUBLISHED).first()
+        if not rule:
+            rule = self.create_rule(application.position)
         job = AnalysisJob.objects.create(
             position=application.position,
             requested_by=self.hr,
@@ -1289,7 +1291,8 @@ class AnalysisTests(WorkflowFixtureMixin, TestCase):
         response = client.get(reverse("analysis:job_detail", args=[job.pk]))
 
         self.assertContains(response, "AI 正在逐份分析简历")
-        self.assertContains(response, 'data-auto-refresh="3000"')
+        self.assertNotContains(response, "data-auto-refresh")
+        self.assertContains(response, "刷新进度")
         self.assertContains(response, "0%")
 
     @patch("analysis.views.dispatch_task")
@@ -1736,6 +1739,108 @@ class ReviewTests(WorkflowFixtureMixin, TestCase):
             ).exists()
         )
 
+    def test_clear_rejected_batch_from_review_and_recycle_bin_retention(self):
+        app2 = self.create_application(
+            applicant_id="APPLICANT-REJECT-1",
+            position=self.application.position,
+        )
+        app2.candidate.name = "未通过候选人甲"
+        app2.candidate.save(update_fields=["name"])
+        self.mark_analyzed(app2)
+
+        app3 = self.create_application(
+            applicant_id="APPLICANT-REJECT-2",
+            position=self.application.position,
+        )
+        app3.candidate.name = "未通过候选人乙"
+        app3.candidate.save(update_fields=["name"])
+        self.mark_analyzed(app3)
+
+        batch = create_review_batch(
+            self.application.position,
+            [self.application.pk, app2.pk, app3.pk],
+            self.reviewer,
+            self.hr,
+        )
+        item1 = batch.items.get(application=self.application)
+        item1.decision = ReviewItem.Decision.APPROVED
+        item1.is_draft = False
+        item1.submitted_at = timezone.now()
+        item1.save(update_fields=["decision", "is_draft", "submitted_at"])
+
+        item2 = batch.items.get(application=app2)
+        item2.decision = ReviewItem.Decision.REJECTED
+        item2.is_draft = False
+        item2.submitted_at = timezone.now()
+        item2.save(update_fields=["decision", "is_draft", "submitted_at"])
+
+        item3 = batch.items.get(application=app3)
+        item3.decision = ReviewItem.Decision.REJECTED
+        item3.is_draft = False
+        item3.submitted_at = timezone.now()
+        item3.save(update_fields=["decision", "is_draft", "submitted_at"])
+
+        client = self.authenticated_client(self.hr)
+        res = client.get(reverse("reviews:detail", args=[batch.pk]))
+        self.assertContains(res, "一键清理")
+        self.assertContains(res, "一键导入人才库（1人）")
+
+        # Execute batch clear
+        clear_res = client.post(
+            reverse("reviews:clear_rejected_batch", args=[batch.pk]),
+            follow=True,
+        )
+        self.assertEqual(clear_res.status_code, 200)
+        self.assertContains(clear_res, "已清空 2 名未通过候选人的相关数据")
+
+        app2.refresh_from_db()
+        app3.refresh_from_db()
+        self.application.refresh_from_db()
+
+        self.assertIsNotNone(app2.deleted_at)
+        self.assertIsNotNone(app3.deleted_at)
+        self.assertIsNone(self.application.deleted_at)
+        self.assertEqual(app2.deleted_by, self.hr)
+        self.assertIsNotNone(app2.purge_after)
+
+        # In review detail, rejected candidates show recycled status
+        res_after = client.get(reverse("reviews:detail", args=[batch.pk]))
+        self.assertNotContains(res_after, "一键清理")
+        self.assertContains(res_after, "已放入回收站 (3天后清理)")
+
+        # In recycle bin, Admin can see and restore
+        admin_client = self.authenticated_client(self.admin)
+        recycle_res = admin_client.get(reverse("recruitment:recycle_bin"))
+        self.assertContains(recycle_res, "未通过候选人甲")
+        self.assertContains(recycle_res, "未通过候选人乙")
+
+    def test_clear_rejected_single_item_from_review(self):
+        batch = create_review_batch(
+            self.application.position,
+            [self.application.pk],
+            self.reviewer,
+            self.hr,
+        )
+        item = batch.items.get()
+        item.decision = ReviewItem.Decision.REJECTED
+        item.is_draft = False
+        item.submitted_at = timezone.now()
+        item.save(update_fields=["decision", "is_draft", "submitted_at"])
+
+        client = self.authenticated_client(self.hr)
+        res = client.get(reverse("reviews:detail", args=[batch.pk]))
+        self.assertContains(res, "清空数据")
+
+        clear_res = client.post(
+            reverse("reviews:clear_rejected_item", args=[batch.pk, item.pk]),
+            follow=True,
+        )
+        self.assertEqual(clear_res.status_code, 200)
+        self.assertContains(clear_res, "的相关数据，已移入回收站")
+
+        self.application.refresh_from_db()
+        self.assertIsNotNone(self.application.deleted_at)
+
     def test_revoke_and_delete_withdrawal(self):
         batch = create_review_batch(
             self.application.position,
@@ -1826,8 +1931,8 @@ class ReviewTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(batch.email_status, ReviewBatch.EmailStatus.PENDING)
         dispatch_task.assert_called_once_with(send_review_batch, batch.pk)
         list_response = client.get(reverse("reviews:list"))
-        self.assertContains(list_response, 'data-refresh-region="review-batches"')
-        self.assertContains(list_response, 'data-auto-refresh="2000"')
+        self.assertNotContains(list_response, "data-auto-refresh")
+        self.assertContains(list_response, "刷新列表")
 
 
 class TalentPoolTests(WorkflowFixtureMixin, TestCase):
@@ -3033,7 +3138,7 @@ class PageSmokeTests(WorkflowFixtureMixin, TestCase):
         response = client.get(reverse("recruitment:sync_jobs"))
 
         self.assertContains(response, "同步或岗位初始化任务正在执行")
-        self.assertContains(response, 'data-auto-refresh="5000"')
+        self.assertNotContains(response, "data-auto-refresh")
         self.assertContains(response, 'data-refresh-region="sync-jobs"')
 
     def test_authenticated_pages_use_fixed_system_title(self):

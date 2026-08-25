@@ -2,16 +2,19 @@
 {% block title %}岗位初始化任务{% endblock %}
 {% block back_url %}{% url 'recruitment:sync_jobs' %}{% endblock %}
 {% block content %}
-<div data-refresh-region="position-initializations"{% if has_active_initializations %} data-auto-refresh="5000"{% endif %}>
+<div data-refresh-region="position-initializations">
   <div class="page-header">
     <div>
       <h1>岗位初始化任务</h1>
       <p>{{ job.get_sync_type_display }}同步 · {{ job.created_at|date:"Y-m-d H:i" }} · 新岗位规则 V0 独立生成进度</p>
     </div>
+    <div class="actions">
+      <a class="button secondary small" href="javascript:location.reload();">刷新进度</a>
+    </div>
   </div>
   {% if has_active_initializations %}
   <section class="panel task-progress-panel">
-    <div class="progress-summary"><strong>岗位规则正在后台生成</strong><span>自动更新</span></div>
+    <div class="progress-summary"><strong>岗位规则正在后台生成</strong><span>处理中</span></div>
     <div class="progress-track indeterminate"><span></span></div>
     <p class="muted">可以离开本页；失败任务不会影响已经完成的北森同步，可单独重试。</p>
   </section>

@@ -4,6 +4,8 @@ from .public_views import public_resume, public_review, public_review_item
 from .views import (
     add_approved_batch_to_talent,
     add_approved_to_talent,
+    clear_rejected_batch_from_review,
+    clear_rejected_item_from_review,
     delete_review,
     reopen_review,
     resend_review,
@@ -28,6 +30,16 @@ urlpatterns = [
         "<int:pk>/items/<int:item_id>/talent/",
         add_approved_to_talent,
         name="add_approved_to_talent",
+    ),
+    path(
+        "<int:pk>/clear-rejected/",
+        clear_rejected_batch_from_review,
+        name="clear_rejected_batch",
+    ),
+    path(
+        "<int:pk>/items/<int:item_id>/clear-rejected/",
+        clear_rejected_item_from_review,
+        name="clear_rejected_item",
     ),
     path("positions/<int:position_id>/start/", start_review, name="start"),
     path("<int:pk>/revoke/", revoke_review, name="revoke"),

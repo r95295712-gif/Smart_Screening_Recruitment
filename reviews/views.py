@@ -6,15 +6,18 @@ from django.shortcuts import get_object_or_404, redirect, render
 from core.task_dispatch import dispatch_task
 from recruitment.models import Position
 from recruitment.services.common import record_audit
+from recruitment.services.deletion import soft_delete_application
 from talent_pool.models import TalentMembership
 from talent_pool.services import add_candidate
 
+from .emails import public_review_url
 from .models import ReviewBatch, ReviewItem, Reviewer
 from .services import (
     ReviewError,
     create_review_batch,
     refresh_batch_state,
     revoke_batch,
+    token_for_batch,
 )
 from .tasks import send_review_batch
 
@@ -23,9 +26,44 @@ from .tasks import send_review_batch
 def review_list(request):
     batches = list(ReviewBatch.objects.select_related(
         "reviewer", "position", "created_by"
-    ).prefetch_related("items__application__candidate")[:200])
+    ).prefetch_related(
+        "items__application__candidate__talent_membership",
+        "items__application__position",
+    )[:200])
+    active_statuses = {
+        TalentMembership.Status.ACTIVE,
+        TalentMembership.Status.STALE,
+    }
     for batch in batches:
         refresh_batch_state(batch)
+        batch.token = token_for_batch(batch)
+        items = list(batch.items.all())
+        importable_count = 0
+        clearable_rejected_count = 0
+        for item in items:
+            membership = getattr(
+                item.application.candidate, "talent_membership", None
+            )
+            is_active_talent = bool(
+                membership and membership.status in active_statuses
+            )
+            is_deleted = item.application.is_deleted
+            if (
+                item.decision == ReviewItem.Decision.APPROVED
+                and not item.is_draft
+                and not is_active_talent
+                and not is_deleted
+            ):
+                importable_count += 1
+            elif (
+                item.decision == ReviewItem.Decision.REJECTED
+                and not item.is_draft
+                and not is_deleted
+            ):
+                clearable_rejected_count += 1
+        batch.importable_count = importable_count
+        batch.clearable_rejected_count = clearable_rejected_count
+
     has_pending_email = any(
         batch.email_status == ReviewBatch.EmailStatus.PENDING
         for batch in batches
@@ -65,19 +103,32 @@ def review_detail(request, pk):
         item.active_talent_membership = (
             membership if membership and membership.status in active_statuses else None
         )
+        item.is_application_deleted = item.application.is_deleted
         item.can_import_to_talent = (
             item.decision == ReviewItem.Decision.APPROVED
             and not item.is_draft
             and not item.active_talent_membership
+            and not item.is_application_deleted
+        )
+        item.can_clear_rejected = (
+            item.decision == ReviewItem.Decision.REJECTED
+            and not item.is_draft
+            and not item.is_application_deleted
         )
     importable_count = sum(item.can_import_to_talent for item in items)
+    clearable_rejected_count = sum(item.can_clear_rejected for item in items)
+    token = token_for_batch(batch)
+    review_url = public_review_url(batch, request)
     return render(
         request,
         "reviews/detail.html",
         {
             "batch": batch,
             "items": items,
+            "token": token,
+            "review_url": review_url,
             "importable_count": importable_count,
+            "clearable_rejected_count": clearable_rejected_count,
         },
     )
 
@@ -285,4 +336,59 @@ def delete_review(request, pk):
         batch.delete()
         messages.success(request, "审核批次记录已删除。")
     return redirect("reviews:list")
+
+
+@login_required
+def clear_rejected_batch_from_review(request, pk):
+    batch = get_object_or_404(ReviewBatch, pk=pk)
+    if request.method == "POST":
+        items = batch.items.filter(
+            decision=ReviewItem.Decision.REJECTED,
+            is_draft=False,
+            application__deleted_at__isnull=True,
+        ).select_related("application", "application__candidate")
+        cleared_count = 0
+        for item in items:
+            soft_delete_application(
+                item.application,
+                request.user,
+                reason=f"审核未通过清理（批次: {batch.position}）",
+            )
+            cleared_count += 1
+        if cleared_count:
+            messages.success(
+                request,
+                f"已清空 {cleared_count} 名未通过候选人的相关数据，已移入回收站（系统保留 3 天，期间可在回收站中恢复，期满自动彻底清理）。",
+            )
+        else:
+            messages.info(request, "当前没有可清空的未通过候选人数据。")
+    return redirect("reviews:detail", pk=batch.pk)
+
+
+@login_required
+def clear_rejected_item_from_review(request, pk, item_id):
+    batch = get_object_or_404(ReviewBatch, pk=pk)
+    item = get_object_or_404(
+        ReviewItem.objects.select_related("application", "application__candidate"),
+        pk=item_id,
+        batch=batch,
+    )
+    if request.method == "POST":
+        if item.decision != ReviewItem.Decision.REJECTED or item.is_draft:
+            messages.error(request, "只有已提交且审核不通过的候选人才能清空数据。")
+        elif item.application.is_deleted:
+            messages.info(request, "该候选人数据已在回收站中。")
+        else:
+            candidate_name = str(item.application.candidate)
+            soft_delete_application(
+                item.application,
+                request.user,
+                reason=f"审核未通过清理（批次: {batch.position}）",
+            )
+            messages.success(
+                request,
+                f"已清空候选人 {candidate_name} 的相关数据，已移入回收站（系统保留 3 天，期满自动彻底清理）。",
+            )
+    return redirect("reviews:detail", pk=batch.pk)
+
 
