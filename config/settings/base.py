@@ -73,6 +73,7 @@ DATABASES = {
     "default": dj_database_url.parse(
         os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
         conn_max_age=60,
+        conn_health_checks=True,
     )
 }
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
