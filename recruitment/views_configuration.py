@@ -23,6 +23,7 @@ from recruitment.services.configuration import (
     configuration_state,
     ensure_position_configuration,
 )
+from recruitment.services.pinyin import name_to_reviewer_email
 from recruitment.services.reference_import import (
     apply_document_reviewers,
     create_reference_document,
@@ -357,3 +358,11 @@ def reference_publish(request, pk):
         publish_reference_document(reference, request.user)
         messages.success(request, "参考资料已发布为当前有效版本。")
     return redirect("recruitment:reference_documents")
+
+
+@login_required
+def pinyin_email_api(request):
+    name = request.GET.get("name", "").strip()
+    email = name_to_reviewer_email(name) if name else ""
+    return JsonResponse({"ok": True, "name": name, "email": email})
+

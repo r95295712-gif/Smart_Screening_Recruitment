@@ -22,10 +22,20 @@ from recruitment.services.position_matching import (
 from reviews.models import PositionReviewer, Reviewer
 
 
+def clean_position_title(title):
+    title = str(title or "").strip()
+    title = re.sub(r"[（(]\s*(?:招聘)?负责人[：:][^）)]*[）)]?", "", title)
+    title = re.sub(r"[（(]\s*(?:暂不招聘|暂停招聘|待招)\s*[）)]?", "", title)
+    title = re.sub(r"\s*(?:招聘)?负责人[：:].*$", "", title)
+    title = re.sub(r"\s*(?:暂不招聘|暂停招聘|待招)\s*$", "", title)
+    title = re.sub(r"^\d+\s*[、.．]\s*", "", title)
+    return title.strip()
+
+
 def split_values(value):
     return [
         item.strip()
-        for item in re.split(r"[；;、,，\n]+", str(value or ""))
+        for item in re.split(r"[；;、,，\n/|]+", str(value or ""))
         if item and item.strip()
     ]
 
@@ -61,6 +71,7 @@ def _table_records(document):
                 ),
                 "",
             )
+            title = clean_position_title(title)
             if not title:
                 continue
             jd_parts = [
@@ -69,10 +80,11 @@ def _table_records(document):
                 if any(word in key for word in ("职责", "要求", "说明", "JD"))
                 and value
             ]
+            aliases = [clean_position_title(a) for a in split_values(title)]
             records.append(
                 {
                     "title": title,
-                    "aliases": split_values(title),
+                    "aliases": [a for a in aliases if a],
                     "jd": "\n".join(jd_parts),
                     "source_section": "表格",
                     "metadata": values,
@@ -96,15 +108,16 @@ def parse_job_summary_docx(content):
         title_match = re.match(r"^(?:岗位名称|职位名称)[:：]\s*(.+)$", text)
         is_heading = style_name.lower().startswith("heading")
         if title_match or is_heading:
-            title = (title_match.group(1) if title_match else text).strip()
-            title = re.sub(r"^\d+\s*[、.．]\s*", "", title)
-            if len(title) <= 80 and not any(
+            raw_title = (title_match.group(1) if title_match else text).strip()
+            title = clean_position_title(raw_title)
+            if title and len(title) <= 80 and not any(
                 word in title
-                for word in ("招聘信息", "岗位职责", "任职要求", "注意事项")
+                for word in ("招聘信息", "岗位职责", "任职要求", "注意事项", "筛选注意")
             ):
+                aliases = [clean_position_title(a) for a in split_values(title)]
                 current = {
                     "title": title,
-                    "aliases": split_values(title),
+                    "aliases": [a for a in aliases if a],
                     "jd_lines": [],
                     "source_section": style_name or "正文",
                     "metadata": {},
@@ -131,45 +144,60 @@ def parse_reviewer_mapping_xlsx(content):
         rows = list(worksheet.iter_rows(values_only=True))
         for header_index, row in enumerate(rows):
             headers = [str(value or "").strip() for value in row]
-            title_column = next(
-                (
-                    index
-                    for index, value in enumerate(headers)
-                    if "岗位" in value or "职位" in value
-                ),
-                None,
-            )
+            pos_columns = [
+                index
+                for index, value in enumerate(headers)
+                if ("岗位" in value or "职位" in value)
+                and not any(k in value for k in ("ID", "说明", "JD", "状态", "相似度"))
+            ]
             owner_column = next(
-                (index for index, value in enumerate(headers) if "负责人" in value),
+                (index for index, value in enumerate(headers) if "负责人" in value and "邮箱" not in value and "HR" not in value),
                 None,
             )
+            if owner_column is None:
+                owner_column = next(
+                    (index for index, value in enumerate(headers) if "负责人" in value and "邮箱" not in value),
+                    None,
+                )
             email_column = next(
-                (index for index, value in enumerate(headers) if "邮箱" in value),
+                (index for index, value in enumerate(headers) if "邮箱" in value and "HR" not in value),
                 None,
             )
-            if title_column is None or owner_column is None or email_column is None:
+            if email_column is None:
+                email_column = next(
+                    (index for index, value in enumerate(headers) if "邮箱" in value),
+                    None,
+                )
+            if not pos_columns or owner_column is None or email_column is None:
                 continue
+            title_column = pos_columns[0]
             for data_row in rows[header_index + 1 :]:
                 if max(title_column, owner_column) >= len(data_row):
                     continue
-                title = str(data_row[title_column] or "").strip()
-                if not title:
+                title = clean_position_title(data_row[title_column])
+                if not title or title.startswith("未找到"):
                     continue
-                names = split_values(data_row[owner_column])
-                emails = (
-                    split_values(data_row[email_column])
-                    if email_column is not None and email_column < len(data_row)
-                    else []
-                )
+                aliases = []
+                for col_idx in pos_columns:
+                    if col_idx < len(data_row) and data_row[col_idx]:
+                        val = clean_position_title(data_row[col_idx])
+                        if val and not val.startswith("未找到"):
+                            aliases.extend([clean_position_title(x) for x in split_values(val)])
+                aliases = list(dict.fromkeys([a for a in aliases if a]))
+
+                raw_owners = str(data_row[owner_column] or "")
+                raw_emails = str(data_row[email_column] or "") if email_column < len(data_row) else ""
+                names = [n.strip() for n in re.split(r"[、,，；;\s\n]+", raw_owners) if n.strip()]
+                emails = [e.strip() for e in re.split(r"[、,，；;\s\n]+", raw_emails) if e.strip() and "@" in e]
                 reviewers = []
                 for index, name in enumerate(names):
-                    email = emails[index] if index < len(emails) else ""
-                    if name not in {"待确认", "-"} and "@" in email:
+                    email = emails[index] if index < len(emails) else (emails[0] if len(emails) == 1 else "")
+                    if name not in {"待确认", "-", "无"} and email and "@" in email:
                         reviewers.append({"name": name, "email": email})
                 records.append(
                     {
                         "title": title,
-                        "aliases": split_values(title),
+                        "aliases": aliases,
                         "jd": "",
                         "source_section": worksheet.title,
                         "metadata": {"reviewers": reviewers},
@@ -231,33 +259,66 @@ def create_reference_document(uploaded_file, document_type, actor):
     return reference
 
 
-def _mapping_for_document_position(document_position):
-    if not document_position:
+def _mapping_for_document_position(document_position, position=None):
+    targets = set()
+    if document_position:
+        clean_title = clean_position_title(document_position.title)
+        targets.add(normalize_position_title(clean_title))
+        for alias in document_position.aliases or []:
+            clean_alias = clean_position_title(alias)
+            targets.add(normalize_position_title(clean_alias))
+    if position:
+        targets.add(normalize_position_title(position.name))
+        for alias in split_values(position.name):
+            targets.add(normalize_position_title(alias))
+
+    if not targets:
         return None
-    targets = {
-        normalize_position_title(document_position.title),
-        *(
-            normalize_position_title(alias)
-            for alias in document_position.aliases or []
-        ),
-    }
-    mappings = DocumentPosition.objects.filter(
-        reference_document__document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
-        reference_document__status=ReferenceDocument.Status.ACTIVE,
-        is_active=True,
+
+    mappings = list(
+        DocumentPosition.objects.filter(
+            reference_document__document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
+            reference_document__status=ReferenceDocument.Status.ACTIVE,
+            is_active=True,
+        )
     )
+    # 1. Exact match
     for mapping in mappings:
         mapping_names = {
-            normalize_position_title(mapping.title),
-            *(normalize_position_title(alias) for alias in mapping.aliases or []),
+            normalize_position_title(clean_position_title(mapping.title)),
+            *(
+                normalize_position_title(clean_position_title(alias))
+                for alias in mapping.aliases or []
+            ),
         }
         if targets & mapping_names:
             return mapping
+
+    # 2. Normalized token / substring match (e.g. 'tiktok' in 'tiktok运营')
+    for mapping in mappings:
+        mapping_names = [
+            normalize_position_title(clean_position_title(mapping.title)),
+            *(
+                normalize_position_title(clean_position_title(alias))
+                for alias in mapping.aliases or []
+            ),
+        ]
+        for t in targets:
+            if not t:
+                continue
+            for m in mapping_names:
+                if not m:
+                    continue
+                if (t in m or m in t) and len(min(t, m)) >= 3:
+                    return mapping
     return None
 
 
 def apply_document_reviewers(configuration, actor):
-    mapping = _mapping_for_document_position(configuration.document_position)
+    mapping = _mapping_for_document_position(
+        configuration.document_position,
+        position=configuration.position,
+    )
     if not mapping:
         return 0
     created = 0

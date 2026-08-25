@@ -8,19 +8,17 @@ class PositionRuleForm(forms.ModelForm):
         min_value=0,
         max_value=100,
         label="优先推荐起始分",
-        help_text="达到该分数及以上时，归为优先推荐。",
     )
     review_threshold = forms.IntegerField(
         min_value=0,
         max_value=100,
         label="建议复核起始分",
-        help_text="达到该分数但未达到优先推荐分时，建议人工复核。",
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["evaluation_jd"].disabled = True
-        self.fields["evaluation_jd"].help_text = "来自当前已确认的岗位说明，请在岗位配置中心修改。"
+
         for field_name in ("hard_requirements", "dimensions", "bonus_items"):
             self.fields[field_name].widget = forms.HiddenInput()
         thresholds = self.instance.rating_thresholds or {}

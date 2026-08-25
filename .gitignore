@@ -22,3 +22,6 @@ htmlcov/
 .specify/
 outputs/
 backups/
+~$*
+*.zip
+

@@ -5,7 +5,6 @@
 <div class="page-header">
   <div>
     <h1>{{ position.name }} · 规则草稿</h1>
-    <p>这里配置的是候选人评估依据与规则，请用招聘业务语言逐项核对。</p>
   </div>
 </div>
 
@@ -13,7 +12,7 @@
   <aside class="rule-jd-column">
     <section class="panel rule-jd-panel">
       <div class="panel-header">
-        <div><h2>已确认岗位说明</h2><p>此处只读，用于帮助您单独配置右侧的评估依据与规则。</p></div>
+        <div><h2>已确认岗位说明</h2></div>
       </div>
       <div class="pre-wrap rule-jd-content">{{ form.instance.evaluation_jd|default:"暂无已确认的岗位说明" }}</div>
     </section>
@@ -40,7 +39,7 @@
 
       <section class="rule-section" data-rule-editor data-input-id="id_hard_requirements" data-editor-type="requirements">
         <div class="rule-section-heading">
-          <div><span class="step-chip">1</span><h2>硬性要求</h2><p>候选人必须满足或需要重点核实的条件。</p></div>
+          <div><span class="step-chip">1</span><h2>硬性要求</h2></div>
           <button class="button secondary small" type="button" data-add-rule-item>新增要求</button>
         </div>
         {{ form.hard_requirements.errors }}
@@ -56,7 +55,7 @@
 
       <section class="rule-section" data-rule-editor data-input-id="id_dimensions" data-editor-type="dimensions">
         <div class="rule-section-heading">
-          <div><span class="step-chip">2</span><h2>评分维度</h2><p>设置评估方向和权重，全部权重合计必须为 100。</p></div>
+          <div><span class="step-chip">2</span><h2>评分维度</h2></div>
           <button class="button secondary small" type="button" data-add-rule-item>新增维度</button>
         </div>
         {{ form.dimensions.errors }}
@@ -76,7 +75,7 @@
 
       <section class="rule-section" data-rule-editor data-input-id="id_bonus_items" data-editor-type="bonus">
         <div class="rule-section-heading">
-          <div><span class="step-chip">3</span><h2>加分项</h2><p>不是必须条件，但具备时可以提高匹配度。</p></div>
+          <div><span class="step-chip">3</span><h2>加分项</h2></div>
           <button class="button secondary small" type="button" data-add-rule-item>新增加分项</button>
         </div>
         {{ form.bonus_items.errors }}
@@ -92,11 +91,11 @@
 
       <section class="rule-section">
         <div class="rule-section-heading">
-          <div><span class="step-chip">4</span><h2>推荐分数线</h2><p>系统根据总分给出优先推荐、建议复核或暂不优先。</p></div>
+          <div><span class="step-chip">4</span><h2>推荐分数线</h2></div>
         </div>
         <div class="threshold-grid">
-          <label>{{ form.priority_threshold.label }}{{ form.priority_threshold }}<small>{{ form.priority_threshold.help_text }}</small>{{ form.priority_threshold.errors }}</label>
-          <label>{{ form.review_threshold.label }}{{ form.review_threshold }}<small>{{ form.review_threshold.help_text }}</small>{{ form.review_threshold.errors }}</label>
+          <label>{{ form.priority_threshold.label }}{{ form.priority_threshold }}{{ form.priority_threshold.errors }}</label>
+          <label>{{ form.review_threshold.label }}{{ form.review_threshold }}{{ form.review_threshold.errors }}</label>
         </div>
         <div class="threshold-preview">
           <span class="status success">达到优先推荐分：优先推荐</span>

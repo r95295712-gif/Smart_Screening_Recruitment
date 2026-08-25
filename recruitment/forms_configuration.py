@@ -37,7 +37,6 @@ class PositionMatchForm(forms.Form):
         queryset=DocumentPosition.objects.none(),
         required=False,
         label="参考资料中的岗位",
-        help_text="下拉选项来自当前已发布的招聘汇总参考资料。",
     )
     no_match = forms.BooleanField(required=False, label="确认没有对应参考岗位")
 
@@ -65,7 +64,6 @@ class JdDecisionForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 16}),
         label="最终岗位说明",
-        help_text="这里编辑并确认的是岗位说明；候选人评估依据在下一步“评估依据与规则”中单独配置。",
     )
 
     def clean(self):
@@ -79,6 +77,27 @@ class JdDecisionForm(forms.Form):
         return cleaned
 
 
+from recruitment.services.pinyin import name_to_reviewer_email
+
+
 class ReviewerForm(forms.Form):
-    name = forms.CharField(max_length=255, label="负责人姓名")
-    email = forms.EmailField(label="负责人邮箱")
+    name = forms.CharField(
+        max_length=255,
+        label="负责人姓名",
+        widget=forms.TextInput(attrs={"placeholder": "例如：张三", "autocomplete": "off", "data-reviewer-name-input": "true"}),
+    )
+    email = forms.EmailField(
+        required=False,
+        label="负责人邮箱",
+        widget=forms.EmailInput(attrs={"placeholder": "自动按姓名拼音补全或手动输入", "data-reviewer-email-input": "true"}),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        name = (cleaned.get("name") or "").strip()
+        email = (cleaned.get("email") or "").strip()
+        if name and not email:
+            cleaned["email"] = name_to_reviewer_email(name)
+        elif not name and not email:
+            raise forms.ValidationError("请输入负责人姓名。")
+        return cleaned

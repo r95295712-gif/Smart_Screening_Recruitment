@@ -2,7 +2,7 @@
 {% block title %}选择负责人{% endblock %}
 {% block back_url %}{% url 'recruitment:position_detail' position.pk %}{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>选择审核负责人</h1><p>{{ position }} 配置了多名负责人，可选择一名或多名，系统将分别发送审核邮件。</p></div></div>
+<div class="page-header"><div><h1>选择审核负责人</h1><p>{{ position }}</p></div></div>
 <section class="panel narrow"><form method="post" class="stack-form" action="{% url 'reviews:start' position.pk %}">{% csrf_token %}
 {% for application_id in application_ids %}<input type="hidden" name="application_ids" value="{{ application_id }}">{% endfor %}
 <fieldset><legend>负责人</legend>{% for reviewer in reviewers %}<label><input type="checkbox" name="reviewer_ids" value="{{ reviewer.pk }}"> {{ reviewer }}</label>{% endfor %}</fieldset>

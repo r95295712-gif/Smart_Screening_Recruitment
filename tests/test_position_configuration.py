@@ -188,9 +188,9 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
             )
         )
 
-        self.assertContains(response, "仅内容或来源发生变化时才会生成新版本")
+        self.assertContains(response, "岗位说明版本")
         self.assertContains(response, 'class="history-scroll"')
-        self.assertContains(response, "共 9 个版本")
+        self.assertContains(response, "V9")
 
     def test_rule_requires_current_decision_and_publish_does_not_change_jd(self):
         with self.assertRaises(RuleDraftError):
@@ -425,6 +425,55 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
         link = self.position.reviewer_links.get()
         self.assertEqual(link.source_type, PositionReviewer.SourceType.DOCUMENT)
 
+    def test_confirm_match_with_dirty_title_and_auto_applies_reviewers(self):
+        doc = ReferenceDocument.objects.create(
+            name="招聘汇总",
+            document_type=ReferenceDocument.DocumentType.JOB_SUMMARY_DOCX,
+            content_hash="summary-dirty",
+            version=2,
+            status=ReferenceDocument.Status.ACTIVE,
+            uploaded_by=self.hr,
+        )
+        doc_pos = DocumentPosition.objects.create(
+            reference_document=doc,
+            title="3、TK运营/Tiktok运营  招聘负责人：吴晨静、苏碧龙",
+            normalized_title="3tk运营tiktok运营招聘负责人吴晨静苏碧龙",
+            aliases=["TK运营", "Tiktok运营"],
+            jd="负责TK店铺运营",
+        )
+        mapping_doc = ReferenceDocument.objects.create(
+            name="负责人表",
+            document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
+            content_hash="reviewers-dirty",
+            version=2,
+            status=ReferenceDocument.Status.ACTIVE,
+            uploaded_by=self.hr,
+        )
+        DocumentPosition.objects.create(
+            reference_document=mapping_doc,
+            title="Tiktok运营",
+            normalized_title="tiktok运营",
+            aliases=["TK运营/Tiktok运营"],
+            metadata={
+                "reviewers": [
+                    {"name": "吴晨静", "email": "wuchenjing@nuptio.net"},
+                    {"name": "苏碧龙", "email": "subilong@nuptio.net"},
+                ]
+            },
+        )
+        self.configuration.document_position = doc_pos
+        self.configuration.match_status = PositionConfiguration.MatchStatus.CONFIRMED
+        self.configuration.save()
+
+        count = apply_document_reviewers(self.configuration, self.hr)
+        self.assertEqual(count, 2)
+        links = self.position.reviewer_links.all()
+        self.assertEqual(links.count(), 2)
+        self.assertEqual(
+            set(links.values_list("reviewer__name", flat=True)),
+            {"吴晨静", "苏碧龙"},
+        )
+
     def test_review_is_rejected_when_position_configuration_is_incomplete(self):
         application = self.create_application(
             applicant_id="REVIEW-CONFIG",
@@ -637,7 +686,7 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
             with self.subTest(role=user.role):
                 response = self.authenticated_client(user).get(url)
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, "请用招聘业务语言逐项核对")
+                self.assertContains(response, "规则草稿")
                 self.assertContains(response, "要求名称")
                 self.assertContains(response, "维度名称")
                 self.assertContains(response, "评估说明")
@@ -883,3 +932,39 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
             operation.status,
             RuleGenerationOperation.Status.CANCELLED,
         )
+
+    def test_pinyin_name_to_email_and_api(self):
+        from recruitment.services.pinyin import name_to_pinyin, name_to_reviewer_email
+        from recruitment.forms_configuration import ReviewerForm
+
+        self.assertEqual(name_to_pinyin("张三"), "zhangsan")
+        self.assertEqual(name_to_pinyin("张玉凡"), "zhangyufan")
+        self.assertEqual(name_to_reviewer_email("张三"), "zhangsan@nuptio.net")
+        self.assertEqual(name_to_reviewer_email("李四"), "lisi@nuptio.net")
+
+        # Test ReviewerForm auto-generation
+        form = ReviewerForm({"name": "张三", "email": ""})
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["email"], "zhangsan@nuptio.net")
+
+        # Test ReviewerForm with custom email
+        form_custom = ReviewerForm({"name": "张三", "email": "custom@example.com"})
+        self.assertTrue(form_custom.is_valid())
+        self.assertEqual(form_custom.cleaned_data["email"], "custom@example.com")
+
+        # Test API endpoint
+        client = self.authenticated_client(self.hr)
+        res = client.get(reverse("recruitment:pinyin_email_api"), {"name": "张三"})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"ok": True, "name": "张三", "email": "zhangsan@nuptio.net"})
+
+        # Test adding reviewer via view without email
+        add_res = client.post(
+            reverse("recruitment:configuration_add_reviewer", args=[self.position.pk]),
+            {"name": "张三", "email": ""},
+            follow=True,
+        )
+        self.assertEqual(add_res.status_code, 200)
+        self.assertContains(add_res, "审核负责人已保存")
+        link = self.position.reviewer_links.get(reviewer__name="张三")
+        self.assertEqual(link.reviewer.email, "zhangsan@nuptio.net")

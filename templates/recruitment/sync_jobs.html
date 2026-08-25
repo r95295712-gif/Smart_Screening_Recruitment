@@ -4,7 +4,6 @@
 <div class="page-header">
   <div>
     <h1>北森同步</h1>
-    <p>选择时间范围，手动同步候选人、投递、岗位和简历文件；系统后台会自动定时执行增量同步。</p>
   </div>
   <form method="post" class="sync-form" data-loading-text="正在创建并执行北森同步任务，请稍候。">
     {% csrf_token %}
@@ -21,7 +20,6 @@
 <section class="configuration-banner ready">
   <div>
     <strong>新岗位会自动完成分析初始化</strong>
-    <p>同步发现新岗位后，系统采用北森岗位说明生成并发布规则 V0；HR 可直接开始 AI 分析，送审前再配置负责人。</p>
   </div>
   <a class="button secondary" href="{% url 'recruitment:configuration_list' %}">查看岗位配置</a>
 </section>

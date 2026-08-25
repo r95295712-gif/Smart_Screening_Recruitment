@@ -3,7 +3,6 @@
     <div>
       <span class="report-eyebrow">AI 分析参考</span>
       <h3>候选人与岗位的匹配情况</h3>
-      <p>以下内容仅供审核参考，最终判断请结合简历和面试情况作出。</p>
     </div>
     {% if item.analysis_report %}
     <div class="public-report-score">
@@ -17,7 +16,7 @@
   {% if item.analysis_report %}
   <div class="public-report-section">
     <div class="report-section-heading">
-      <div><span class="report-section-index">01</span><div><h3>岗位要求核对</h3><p>查看简历中能够支持判断的内容和待确认事项。</p></div></div>
+      <div><span class="report-section-index">01</span><div><h3>岗位要求核对</h3></div></div>
     </div>
     <div class="requirement-grid">
       {% for row in item.analysis_presentation.hard_requirements %}
@@ -32,7 +31,7 @@
 
   <div class="public-report-section">
     <div class="report-section-heading">
-      <div><span class="report-section-index">02</span><div><h3>维度评分</h3><p>按本岗位当前评估要求展示各项判断依据。</p></div></div>
+      <div><span class="report-section-index">02</span><div><h3>维度评分</h3></div></div>
     </div>
     <div class="dimension-list">
       {% for row in item.analysis_presentation.dimensions %}
@@ -75,7 +74,7 @@
 
   <div class="public-report-section">
     <div class="report-section-heading">
-      <div><span class="report-section-index">03</span><div><h3>面试建议</h3><p>用于快速核实影响判断的关键信息。</p></div></div>
+      <div><span class="report-section-index">03</span><div><h3>面试建议</h3></div></div>
     </div>
     <div class="interview-grid">
       <div>

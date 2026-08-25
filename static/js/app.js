@@ -441,6 +441,71 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("pageshow", () => hideTaskOverlay());
 
+function enhanceReviewerEmailAutoFill(root = document) {
+  root.querySelectorAll("form").forEach((form) => {
+    const nameInput = form.querySelector('input[name="name"], #id_name, [data-reviewer-name-input]');
+    const emailInput = form.querySelector('input[name="email"], #id_email, [data-reviewer-email-input]');
+    if (!nameInput || !emailInput) return;
+    if (nameInput.dataset.pinyinAutoFillReady) return;
+    nameInput.dataset.pinyinAutoFillReady = "true";
+
+    let debounceTimer = null;
+    let lastGeneratedEmail = "";
+
+    emailInput.addEventListener("input", () => {
+      const val = emailInput.value.trim();
+      if (val && val !== lastGeneratedEmail) {
+        emailInput.dataset.userModified = "true";
+      } else if (!val) {
+        emailInput.dataset.userModified = "false";
+      }
+    });
+
+    const updateEmail = async () => {
+      const nameVal = nameInput.value.trim();
+      if (!nameVal) {
+        if (emailInput.dataset.userModified !== "true") {
+          emailInput.value = "";
+          lastGeneratedEmail = "";
+        }
+        return;
+      }
+      if (emailInput.dataset.userModified === "true" && emailInput.value.trim()) {
+        return;
+      }
+      try {
+        const response = await fetch(`/recruitment/api/pinyin-email/?name=${encodeURIComponent(nameVal)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && data.email) {
+            if (emailInput.dataset.userModified !== "true" || !emailInput.value.trim()) {
+              emailInput.value = data.email;
+              lastGeneratedEmail = data.email;
+            }
+          }
+        }
+      } catch (err) {}
+    };
+
+    const triggerDebounced = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(updateEmail, 50);
+    };
+
+    nameInput.addEventListener("input", triggerDebounced);
+    nameInput.addEventListener("compositionend", () => {
+      setTimeout(updateEmail, 10);
+    });
+    nameInput.addEventListener("change", updateEmail);
+    nameInput.addEventListener("blur", updateEmail);
+    nameInput.addEventListener("keyup", triggerDebounced);
+
+    if (nameInput.value.trim() && !emailInput.value.trim()) {
+      updateEmail();
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const themeOrder = ["system", "light", "dark"];
   const themeLabels = {
@@ -496,6 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   enhanceTables();
   enhanceRowSelection();
+  enhanceReviewerEmailAutoFill();
   restorePageState();
 
   document.querySelectorAll("[data-rule-form]").forEach((form) => {

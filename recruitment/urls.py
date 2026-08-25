@@ -35,6 +35,7 @@ from .views_configuration import (
     configuration_detail,
     configuration_list,
     configuration_remove_reviewer,
+    pinyin_email_api,
     reference_documents,
     reference_publish,
 )
@@ -42,6 +43,7 @@ from .views_configuration import (
 app_name = "recruitment"
 
 urlpatterns = [
+    path("api/pinyin-email/", pinyin_email_api, name="pinyin_email_api"),
     path("position-configuration/", configuration_list, name="configuration_list"),
     path(
         "position-configuration/references/",

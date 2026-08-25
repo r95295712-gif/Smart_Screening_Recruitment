@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}岗位与简历{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>岗位与简历</h1><p>按岗位查看北森投递、简历和处理进度，并完成岗位相关配置。</p></div><div class="actions"><a class="button secondary" href="{% url 'recruitment:reference_documents' %}">参考资料</a><a class="button primary" href="{% url 'recruitment:configuration_list' %}">岗位配置</a></div></div>
+<div class="page-header"><div><h1>岗位与简历</h1></div><div class="actions"><a class="button secondary" href="{% url 'recruitment:reference_documents' %}">参考资料</a><a class="button primary" href="{% url 'recruitment:configuration_list' %}">岗位配置</a></div></div>
 <section class="panel">
   <form method="get" class="filters">{{ form.as_div }}<button class="button primary" type="submit">筛选</button></form>
 </section>
