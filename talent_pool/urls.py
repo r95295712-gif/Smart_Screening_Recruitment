@@ -9,6 +9,9 @@ from .views import (
     delete_tag,
     edit_note,
     edit_tag,
+    interview_delete,
+    interview_list,
+    interview_update_api,
     membership_detail,
     recommend,
     remove_membership,
@@ -22,6 +25,9 @@ app_name = "talent_pool"
 
 urlpatterns = [
     path("", talent_list, name="list"),
+    path("interviews/", interview_list, name="interview_list"),
+    path("interviews/<int:pk>/update/", interview_update_api, name="interview_update"),
+    path("interviews/<int:pk>/delete/", interview_delete, name="interview_delete"),
     path("tags/", tag_list, name="tag_list"),
     path("<int:pk>/", membership_detail, name="detail"),
     path(

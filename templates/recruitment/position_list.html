@@ -7,19 +7,18 @@
 </section>
 <section class="panel">
   <table>
-    <thead><tr><th>岗位</th><th>类型</th><th>北森状态</th><th>配置状态</th><th>投递数</th><th>最后同步</th><th>操作</th></tr></thead>
+    <thead><tr><th>岗位</th><th>北森状态</th><th>配置状态</th><th>投递数</th><th>最后同步</th><th>操作</th></tr></thead>
     <tbody>
       {% for position in positions %}
       <tr>
         <td><a class="text-link" href="{% url 'recruitment:position_detail' position.pk %}"><strong>{{ position.name }}</strong></a></td>
-        <td>{{ position.position_type|default:"-" }}</td>
         <td><span class="status {% if position.status == 'active' %}success{% endif %}">{{ position.get_status_display }}</span></td>
         <td><span class="status {% if position.configuration_state_view.can_analyze %}success{% elif position.configuration_state_view.code == 'update_required' %}warning{% endif %}">{{ position.configuration_state_view.label }}</span></td>
         <td>{{ position.visible_application_count }}</td>
         <td>{{ position.last_synced_at|date:"Y-m-d H:i"|default:"-" }}</td>
         <td><a class="text-link" href="{% url 'recruitment:configuration_detail' position.pk %}">配置</a></td>
       </tr>
-      {% empty %}<tr><td colspan="7">暂无岗位，请先配置北森并执行同步。</td></tr>{% endfor %}
+      {% empty %}<tr><td colspan="6">暂无岗位，请先配置北森并执行同步。</td></tr>{% endfor %}
     </tbody>
   </table>
 </section>

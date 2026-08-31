@@ -136,3 +136,80 @@ class CandidateNote(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+WEEKDAYS_CN = {
+    0: "星期一",
+    1: "星期二",
+    2: "星期三",
+    3: "星期四",
+    4: "星期五",
+    5: "星期六",
+    6: "星期日",
+}
+
+
+class InterviewResultOption(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    color = models.CharField(max_length=32, default="default")
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.name
+
+
+class TalentInterview(models.Model):
+    candidate = models.ForeignKey(
+        Candidate, on_delete=models.CASCADE, related_name="interviews"
+    )
+    membership = models.ForeignKey(
+        TalentMembership,
+        on_delete=models.CASCADE,
+        related_name="interviews",
+        null=True,
+        blank=True,
+    )
+    position_name = models.CharField(max_length=255, blank=True, db_index=True)
+    interview_date = models.DateField(null=True, blank=True, db_index=True)
+    interview_time = models.CharField(max_length=32, blank=True)
+    first_interviewer = models.CharField(max_length=128, blank=True, db_index=True)
+    second_interviewer = models.CharField(max_length=128, blank=True, db_index=True)
+    result = models.CharField(max_length=64, default="未面试", db_index=True)
+    notes = models.TextField(blank=True)
+    channel = models.CharField(max_length=128, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-interview_date", "-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["-interview_date", "-created_at"],
+                name="talent_interview_date_idx",
+            ),
+        ]
+
+    @property
+    def formatted_date_with_weekday(self):
+        if not self.interview_date:
+            return ""
+        weekday_str = WEEKDAYS_CN.get(self.interview_date.weekday(), "")
+        return f"{self.interview_date.year}年{self.interview_date.month}月{self.interview_date.day}日 {weekday_str}"
+
+    @property
+    def result_color_type(self):
+        if self.result == "未面试":
+            return "muted"
+        if self.result == "录用":
+            return "success"
+        if self.result == "淘汰":
+            return "danger"
+        return "warning"
+
+    def __str__(self):
+        return f"{self.candidate} · {self.position_name} · {self.result}"
+

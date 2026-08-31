@@ -3,7 +3,7 @@
 {% block back_url %}{% url 'recruitment:position_list' %}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><h1>{{ position.name }}</h1><p>{{ position.position_type|default:"未设置岗位类型" }} · {{ position.get_status_display }}</p></div>
+  <div><h1>{{ position.name }}</h1><p>{{ position.get_status_display }}</p></div>
   <div class="actions">
     <a class="button secondary" href="{% url 'recruitment:configuration_detail' position.pk %}">岗位配置</a>
     <form method="post" action="{% url 'recruitment:set_position_status' position.pk %}">{% csrf_token %}{% if position.status == "active" %}<input type="hidden" name="status" value="historical"><button class="button secondary" type="submit">设为历史岗位</button>{% else %}<input type="hidden" name="status" value="active"><button class="button secondary" type="submit">临时启用岗位</button>{% endif %}</form>

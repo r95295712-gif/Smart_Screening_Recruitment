@@ -11,6 +11,7 @@ from .views import (
     usage_dashboard,
 )
 from .views_rules import (
+    rule_delete,
     rule_detail,
     rule_edit,
     rule_generate,
@@ -48,5 +49,6 @@ urlpatterns = [
         name="rule_edit_version",
     ),
     path("rules/<int:rule_id>/publish/", rule_publish, name="rule_publish"),
+    path("rules/<int:rule_id>/delete/", rule_delete, name="rule_delete"),
     path("usage/", usage_dashboard, name="usage"),
 ]

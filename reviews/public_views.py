@@ -215,11 +215,14 @@ def public_resume(request, public_id, token, item_id):
     ):
         file_field = resume.source_file
     if file_field:
-        return FileResponse(
-            file_field.open("rb"),
-            content_type="application/pdf",
-            as_attachment=False,
-        )
+        try:
+            return FileResponse(
+                file_field.open("rb"),
+                content_type="application/pdf",
+                as_attachment=False,
+            )
+        except (FileNotFoundError, OSError, ValueError):
+            pass
     return render(
         request,
         "reviews/public/resume_text.html",

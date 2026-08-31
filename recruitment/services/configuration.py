@@ -31,6 +31,113 @@ def build_text_diff(beisen_jd, document_jd):
     )
 
 
+def build_merged_jd(beisen_jd, document_jd):
+    import re
+
+    b_text = (beisen_jd or "").strip()
+    d_text = (document_jd or "").strip()
+    if not d_text:
+        return b_text
+    if not b_text:
+        return d_text
+    if b_text == d_text:
+        return b_text
+
+    def clean_item(line):
+        return re.sub(
+            r"^[\d一二三四五六七八九十]+[、.\s\-\)]\s*|^[•\-\*\+]\s*", "", line
+        ).strip()
+
+    def parse_sections(text):
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        sections = {"responsibilities": [], "requirements": [], "others": []}
+        curr = "responsibilities"
+        for l in lines:
+            normalized = (
+                l.replace(" ", "")
+                .replace("【", "")
+                .replace("】", "")
+                .replace(":", "")
+                .replace("：", "")
+            )
+            if any(
+                k in normalized
+                for k in ["岗位职责", "工作职责", "主要职责", "职责描述", "职责"]
+            ):
+                curr = "responsibilities"
+                continue
+            elif any(
+                k in normalized
+                for k in ["任职要求", "任职资格", "岗位要求", "职位要求", "招聘要求", "任职条件"]
+            ):
+                curr = "requirements"
+                continue
+            elif any(
+                k in normalized
+                for k in ["加分项", "优先条件", "福利待遇", "其他说明", "备注"]
+            ):
+                curr = "others"
+                continue
+            sections[curr].append(l)
+        return sections
+
+    sec_b = parse_sections(b_text)
+    sec_d = parse_sections(d_text)
+
+    merged_parts = []
+
+    # 1. Responsibilities
+    resp_items = []
+    seen_resp = set()
+    for item in sec_b["responsibilities"] + sec_d["responsibilities"]:
+        cleaned = clean_item(item)
+        if cleaned and cleaned not in seen_resp:
+            seen_resp.add(cleaned)
+            resp_items.append(cleaned)
+
+    if resp_items:
+        merged_parts.append("岗位职责：")
+        for i, item in enumerate(resp_items, 1):
+            merged_parts.append(f"{i}. {item}")
+
+    # 2. Requirements
+    req_items = []
+    seen_req = set()
+    for item in sec_b["requirements"] + sec_d["requirements"]:
+        cleaned = clean_item(item)
+        if cleaned and cleaned not in seen_req:
+            seen_req.add(cleaned)
+            req_items.append(cleaned)
+
+    if req_items:
+        if merged_parts:
+            merged_parts.append("")
+        merged_parts.append("任职要求：")
+        for i, item in enumerate(req_items, 1):
+            merged_parts.append(f"{i}. {item}")
+
+    # 3. Others
+    other_items = []
+    seen_other = set()
+    for item in sec_b["others"] + sec_d["others"]:
+        cleaned = clean_item(item)
+        if cleaned and cleaned not in seen_other:
+            seen_other.add(cleaned)
+            other_items.append(cleaned)
+
+    if other_items:
+        if merged_parts:
+            merged_parts.append("")
+        merged_parts.append("加分与其它说明：")
+        for i, item in enumerate(other_items, 1):
+            merged_parts.append(f"{i}. {item}")
+
+    if not merged_parts:
+        return f"【岗位职责与要求（合并）】\n{b_text}\n\n【参考补充内容】\n{d_text}"
+
+    return "\n".join(merged_parts)
+
+
 def ensure_position_configuration(position):
     configuration, _ = PositionConfiguration.objects.get_or_create(position=position)
     return configuration
@@ -153,6 +260,33 @@ def require_analysis_configuration(position):
     return state
 
 
+def _sync_active_rule_for_jd(position, decision, actor):
+    if not decision:
+        return
+    rule = (
+        decision.rule_versions.filter(
+            status__in=[
+                PositionRuleVersion.Status.PUBLISHED,
+                PositionRuleVersion.Status.ARCHIVED,
+            ]
+        )
+        .order_by("-version")
+        .first()
+    )
+    if rule:
+        PositionRuleVersion.objects.filter(
+            position=position, status=PositionRuleVersion.Status.PUBLISHED
+        ).exclude(pk=rule.pk).update(status=PositionRuleVersion.Status.ARCHIVED)
+        rule.status = PositionRuleVersion.Status.PUBLISHED
+        rule.published_by = actor
+        rule.published_at = timezone.now()
+        rule.save(update_fields=["status", "published_by", "published_at"])
+    else:
+        PositionRuleVersion.objects.filter(
+            position=position, status=PositionRuleVersion.Status.PUBLISHED
+        ).exclude(jd_decision=decision).update(status=PositionRuleVersion.Status.ARCHIVED)
+
+
 def require_review_configuration(position):
     try:
         position.configuration
@@ -183,6 +317,8 @@ def confirm_jd(
     document_jd = (document_position.jd if document_position else "").strip()
     if decision_type == PositionJdDecision.DecisionType.BEISEN:
         selected_jd = beisen_jd
+    elif decision_type == PositionJdDecision.DecisionType.MERGED and not (confirmed_jd or "").strip():
+        selected_jd = build_merged_jd(beisen_jd, document_jd)
     else:
         selected_jd = (confirmed_jd or "").strip()
     if not selected_jd:
@@ -198,6 +334,7 @@ def confirm_jd(
         and current.document_jd_hash == document_jd_hash
     ):
         current.was_unchanged = True
+        _sync_active_rule_for_jd(position, current, actor)
         record_audit(
             actor,
             "position_jd.confirm_unchanged",
@@ -205,6 +342,30 @@ def confirm_jd(
             {"position_id": position.pk, "version": current.version},
         )
         return current
+
+    # Check if this exact JD decision already exists in history
+    existing_match = (
+        position.jd_decisions.filter(
+            confirmed_jd=selected_jd,
+            decision_type=decision_type,
+        )
+        .order_by("-version")
+        .first()
+    )
+    if existing_match:
+        position.jd_decisions.filter(is_current=True).update(is_current=False)
+        existing_match.is_current = True
+        existing_match.save(update_fields=["is_current"])
+        position.evaluation_jd = selected_jd
+        position.save(update_fields=["evaluation_jd"])
+        _sync_active_rule_for_jd(position, existing_match, actor)
+        record_audit(
+            actor,
+            "position_jd.confirm_existing",
+            existing_match,
+            {"position_id": position.pk, "version": existing_match.version},
+        )
+        return existing_match
 
     position.jd_decisions.filter(is_current=True).update(is_current=False)
     latest = position.jd_decisions.aggregate(value=Max("version"))["value"] or 0
@@ -225,6 +386,7 @@ def confirm_jd(
     )
     position.evaluation_jd = selected_jd
     position.save(update_fields=["evaluation_jd"])
+    _sync_active_rule_for_jd(position, decision, actor)
     record_audit(
         actor,
         "position_jd.confirm",
@@ -236,3 +398,55 @@ def confirm_jd(
         },
     )
     return decision
+
+
+@transaction.atomic
+def delete_jd_decision(decision, actor, force=False):
+    if decision.is_current:
+        raise ValueError("当前正在生效的岗位说明版本不可直接删除。如需删除，请先切换或确认其他版本为当前生效。")
+
+    rule_count = decision.rule_versions.count()
+    has_analysis_records = any(
+        rule.analysis_items.exists() for rule in decision.rule_versions.all()
+    )
+
+    is_admin = bool(
+        getattr(actor, "is_staff", False) or getattr(actor, "is_superuser", False)
+    )
+
+    if (rule_count > 0 or has_analysis_records) and not is_admin:
+        raise ValueError(
+            "该岗位说明版本已有规则或历史评估记录关联，无法直接删除。如需清理，请联系系统管理员。"
+        )
+
+    if (rule_count > 0 or has_analysis_records) and is_admin and not force:
+        raise ValueError(
+            f"REQUIRED_FORCE_CONFIRM:该岗位说明版本关联了 {rule_count} 个规则版本及历史评估记录！强行删除将解除这些规则与该版本的绑定。确定强行删除吗？"
+        )
+
+    version_num = decision.version
+    pos = decision.position
+
+    if is_admin and force:
+        decision.rule_versions.all().update(jd_decision=None)
+        record_audit(
+            actor,
+            "position_jd.force_delete",
+            pos,
+            {
+                "position_id": pos.pk,
+                "version": version_num,
+                "rule_count": rule_count,
+            },
+        )
+    else:
+        record_audit(
+            actor,
+            "position_jd.delete",
+            pos,
+            {"position_id": pos.pk, "version": version_num},
+        )
+
+    decision.delete()
+    return True
+

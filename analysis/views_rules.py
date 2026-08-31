@@ -17,6 +17,7 @@ from .services.rules import (
     RuleDraftError,
     RuleGenerationCancelled,
     create_generated_rule,
+    delete_rule_version,
     jd_diff,
 )
 
@@ -113,17 +114,40 @@ def rule_edit(request, position_id, rule_id=None):
 
 @login_required
 def rule_publish(request, rule_id):
-    rule = get_object_or_404(
-        PositionRuleVersion, pk=rule_id, status=PositionRuleVersion.Status.DRAFT
-    )
+    rule = get_object_or_404(PositionRuleVersion, pk=rule_id)
     if request.method == "POST":
         try:
             rule.publish(request.user)
             record_audit(request.user, "position_rule.publish", rule)
-            messages.success(request, f"岗位规则 V{rule.version} 已发布。")
+            messages.success(request, f"岗位规则 V{rule.version} 已发布生效。")
         except ValidationError as exc:
             messages.error(request, exc.messages[0])
-    return redirect("analysis:rule_list")
+    next_url = request.POST.get("next") or request.GET.get("next")
+    if next_url:
+        return redirect(next_url)
+    return redirect("recruitment:configuration_detail", pk=rule.position_id)
+
+
+@login_required
+def rule_delete(request, rule_id):
+    rule = get_object_or_404(PositionRuleVersion, pk=rule_id)
+    pos_pk = rule.position_id
+    if request.method == "POST":
+        force = request.POST.get("force") == "true"
+        try:
+            delete_rule_version(rule, request.user, force=force)
+            messages.success(request, f"岗位规则 V{rule.version} 已成功删除。")
+        except ValueError as exc:
+            err_msg = str(exc)
+            if err_msg.startswith("REQUIRED_FORCE_CONFIRM:"):
+                clean_msg = err_msg.replace("REQUIRED_FORCE_CONFIRM:", "")
+                messages.warning(request, clean_msg)
+            else:
+                messages.error(request, err_msg)
+    next_url = request.POST.get("next") or request.GET.get("next")
+    if next_url:
+        return redirect(next_url)
+    return redirect("recruitment:configuration_detail", pk=pos_pk)
 
 
 @login_required

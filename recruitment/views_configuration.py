@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from analysis.services.jd_comparison import create_ai_diff_summary
@@ -19,8 +20,10 @@ from recruitment.models import (
 )
 from recruitment.services.common import record_audit
 from recruitment.services.configuration import (
+    build_merged_jd,
     confirm_jd,
     configuration_state,
+    delete_jd_decision,
     ensure_position_configuration,
 )
 from recruitment.services.pinyin import name_to_reviewer_email
@@ -114,10 +117,18 @@ def configuration_detail(request, pk):
     position = get_object_or_404(Position, pk=pk)
     configuration = ensure_position_configuration(position)
     current_decision = position.jd_decisions.filter(is_current=True).first()
+    beisen_jd = (position.source_jd or "").strip()
+    document_jd = (
+        configuration.document_position.jd
+        if configuration.document_position
+        else ""
+    ).strip()
+    merged_jd = build_merged_jd(beisen_jd, document_jd)
+
     initial_jd = (
         current_decision.confirmed_jd
         if current_decision
-        else position.source_jd
+        else (beisen_jd or merged_jd)
     )
     match_form = PositionMatchForm(
         initial={"document_position": configuration.document_position}
@@ -135,6 +146,45 @@ def configuration_detail(request, pk):
     reviewer_form = ReviewerForm()
     ai_result = request.session.get(f"position-ai-diff-{position.pk}", {})
     decision_version_count = position.jd_decisions.count()
+    matched_rule_versions = (
+        position.rule_versions.filter(jd_decision=current_decision)
+        if current_decision
+        else position.rule_versions.none()
+    )
+    all_rule_versions = position.rule_versions.all()
+
+    jd_rules_map = {}
+    for dec in position.jd_decisions.all():
+        rules = dec.rule_versions.all()
+        jd_rules_map[str(dec.pk)] = {
+            "pk": dec.pk,
+            "version": dec.version,
+            "decision_type": dec.decision_type,
+            "decision_type_display": dec.get_decision_type_display(),
+            "confirmed_jd": dec.confirmed_jd,
+            "is_current": dec.is_current,
+            "confirmed_at": dec.confirmed_at.strftime("%Y-%m-%d %H:%M"),
+            "confirmed_by": dec.confirmed_by.username if dec.confirmed_by else "",
+            "rules": [
+                {
+                    "pk": r.pk,
+                    "version": r.version,
+                    "status": r.status,
+                    "status_display": r.get_status_display(),
+                    "created_at": r.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "detail_url": reverse("analysis:rule_detail", args=[r.pk]),
+                    "edit_url": (
+                        reverse("analysis:rule_edit_version", args=[position.pk, r.pk])
+                        if r.status == "draft"
+                        else ""
+                    ),
+                    "publish_url": reverse("analysis:rule_publish", args=[r.pk]),
+                    "delete_url": reverse("analysis:rule_delete", args=[r.pk]),
+                }
+                for r in rules
+            ],
+        }
+
     return render(
         request,
         "recruitment/configuration/detail.html",
@@ -146,13 +196,19 @@ def configuration_detail(request, pk):
             "match_form": match_form,
             "jd_form": jd_form,
             "reviewer_form": reviewer_form,
+            "beisen_jd": beisen_jd,
+            "document_jd": document_jd,
+            "merged_jd": merged_jd,
             "ai_summary": ai_result.get("summary", "") or (
                 current_decision.ai_diff_summary if current_decision else ""
             ),
             "reviewer_links": position.reviewer_links.select_related("reviewer"),
-            "rule_versions": position.rule_versions.all(),
+            "rule_versions": matched_rule_versions,
+            "matched_rule_versions": matched_rule_versions,
+            "all_rule_versions": all_rule_versions,
             "decision_versions": position.jd_decisions.all(),
             "decision_version_count": decision_version_count,
+            "jd_rules_map": jd_rules_map,
         },
     )
 
@@ -365,4 +421,26 @@ def pinyin_email_api(request):
     name = request.GET.get("name", "").strip()
     email = name_to_reviewer_email(name) if name else ""
     return JsonResponse({"ok": True, "name": name, "email": email})
+
+
+@login_required
+def configuration_delete_jd(request, pk, decision_pk):
+    position = get_object_or_404(Position, pk=pk)
+    decision = get_object_or_404(
+        PositionJdDecision, pk=decision_pk, position=position
+    )
+    if request.method == "POST":
+        force = request.POST.get("force") == "true"
+        try:
+            delete_jd_decision(decision, request.user, force=force)
+            messages.success(request, f"岗位说明 V{decision.version} 已成功删除。")
+        except ValueError as exc:
+            err_msg = str(exc)
+            if err_msg.startswith("REQUIRED_FORCE_CONFIRM:"):
+                clean_msg = err_msg.replace("REQUIRED_FORCE_CONFIRM:", "")
+                messages.warning(request, clean_msg)
+            else:
+                messages.error(request, err_msg)
+    return redirect("recruitment:configuration_detail", pk=position.pk)
+
 

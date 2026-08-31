@@ -1,0 +1,863 @@
+{% extends "base.html" %}
+{% block title %}面试信息 - 人才库{% endblock %}
+{% block back_url %}{% url 'talent_pool:list' %}{% endblock %}
+
+{% block content %}
+<style>
+.interview-table td {
+  padding: 6px 8px;
+  vertical-align: middle;
+  height: 42px;
+  box-sizing: border-box;
+}
+.cell-empty-box {
+  cursor: pointer;
+  border: 1px dashed var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 0 8px;
+  height: 25px;
+  line-height: 23px;
+  font-size: 12px;
+  color: var(--muted, #94a3b8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+.cell-empty-box:hover {
+  border-color: var(--primary, #3b82f6);
+  color: var(--primary, #3b82f6);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+.cell-text {
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 19px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  box-sizing: border-box;
+  transition: background-color 0.2s;
+}
+.cell-text:hover {
+  background-color: rgba(59, 130, 246, 0.06);
+}
+.cell-edit-input {
+  display: none;
+  height: 26px;
+  min-height: 26px !important;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 20px;
+  border: 1px solid var(--primary, #3b82f6);
+  border-radius: 4px;
+  box-sizing: border-box;
+  background: var(--panel, #ffffff);
+  color: var(--ink, #1e293b);
+  vertical-align: middle;
+  outline: none;
+}
+textarea.cell-edit-input {
+  min-height: 26px !important;
+  height: 26px;
+  padding: 2px 6px !important;
+  font-size: 13px !important;
+  line-height: 20px !important;
+  border: 1px solid var(--primary, #3b82f6) !important;
+  border-radius: 4px !important;
+  width: 90px !important;
+  resize: none !important;
+  overflow: hidden !important;
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
+  background: var(--panel, #ffffff) !important;
+}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1>面试信息</h1>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="{% url 'talent_pool:list' %}">人才成员列表</a>
+    <a class="button secondary" href="{% url 'talent_pool:tag_list' %}">标签管理</a>
+  </div>
+</div>
+
+<!-- 筛选面板 -->
+<section class="panel">
+  <form method="get" class="filters" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end;">
+    <div>
+      <label for="id_q" style="font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: block;">综合搜索</label>
+      <input type="text" name="q" id="id_q" value="{{ request.GET.q|default:'' }}" placeholder="姓名 / 岗位 / 面试官 / 备注 / 渠道" style="width: 100%;">
+    </div>
+
+    <div>
+      <label for="id_position" style="font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: block;">岗位</label>
+      <select name="position" id="id_position" style="width: 100%;">
+        <option value="">全部岗位</option>
+        {% for pos in positions %}
+        <option value="{{ pos }}" {% if request.GET.position == pos %}selected{% endif %}>{{ pos }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="id_result" style="font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: block;">面试结果</label>
+      <select name="result" id="id_result" style="width: 100%;">
+        <option value="">全部结果</option>
+        {% for opt in result_options %}
+        <option value="{{ opt.name }}" {% if request.GET.result == opt.name %}selected{% endif %}>{{ opt.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="id_interviewer" style="font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: block;">面试官</label>
+      <select name="interviewer" id="id_interviewer" style="width: 100%;">
+        <option value="">全部面试官</option>
+        {% for intv in interviewers %}
+        <option value="{{ intv }}" {% if request.GET.interviewer == intv %}selected{% endif %}>{{ intv }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="id_channel" style="font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display: block;">渠道</label>
+      <input type="text" name="channel" id="id_channel" value="{{ request.GET.channel|default:'' }}" placeholder="如 BOSS / 智联" style="width: 100%;">
+    </div>
+
+    <div class="actions filter-submit-actions" style="margin-top: 0;">
+      <button class="button primary" type="submit">筛选</button>
+      {% if request.GET.q or request.GET.position or request.GET.result or request.GET.interviewer or request.GET.channel or request.GET.date_from or request.GET.date_to %}
+        <a class="button secondary" href="{% url 'talent_pool:interview_list' %}">重置</a>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+<!-- 面试数据表格 -->
+<section class="panel">
+  <div class="panel-header">
+    <h2>面试记录列表</h2>
+    <span class="muted">
+      共 <strong>{{ paginator.count }}</strong> 条记录{% if paginator.count > 0 %}（第 {{ page_obj.number }} / {{ paginator.num_pages }} 页）{% endif %}
+    </span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="interview-table" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: var(--bg-surface, #f8fafc); border-bottom: 2px solid var(--border, #e2e8f0); white-space: nowrap;">
+          <th style="width: 50px; text-align: center;">序号</th>
+          <th style="min-width: 165px;">日期</th>
+          <th style="min-width: 80px;">时间</th>
+          <th style="min-width: 110px;">岗位</th>
+          <th style="min-width: 95px;">候选人</th>
+          <th style="min-width: 95px;">初面面试官</th>
+          <th style="min-width: 95px;">二面面试官</th>
+          <th style="min-width: 100px; text-align: center;">面试结果</th>
+          <th style="min-width: 130px;">备注</th>
+          <th style="min-width: 85px;">渠道</th>
+          <th style="width: 60px; text-align: center;">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in interviews %}
+        <tr data-interview-id="{{ item.pk }}" data-update-url="{% url 'talent_pool:interview_update' item.pk %}" style="border-bottom: 1px solid var(--border, #e2e8f0);">
+          <!-- 1. 序号 -->
+          <td style="text-align: center; color: var(--muted, #64748b); font-size: 13px; white-space: nowrap; vertical-align: middle;">
+            {{ forloop.counter|add:page_obj.start_index|add:"-1" }}
+          </td>
+
+          <!-- 2. 日期 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper date-cell-wrapper" style="position: relative; display: inline-block;">
+              {% if item.interview_date %}
+                <span class="cell-text date-text" style="font-weight: 500;">
+                  {{ item.formatted_date_with_weekday }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box date-text">
+                  选择日期
+                </span>
+              {% endif %}
+              <input type="date" class="hidden-date-input" value="{{ item.interview_date|date:'Y-m-d'|default:'' }}" style="position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0;">
+            </div>
+          </td>
+
+          <!-- 3. 时间 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper time-cell-wrapper" style="display: inline-block;">
+              {% if item.interview_time %}
+                <span class="cell-text time-text" style="font-family: ui-monospace, monospace;">
+                  {{ item.interview_time }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box time-text">
+                  选择时间
+                </span>
+              {% endif %}
+            </div>
+          </td>
+
+          <!-- 4. 岗位 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper text-cell-wrapper" data-field="position_name">
+              {% if item.position_name %}
+                <span class="cell-text">
+                  {{ item.position_name }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box">
+                  填写岗位
+                </span>
+              {% endif %}
+              <input type="text" class="cell-edit-input" value="{{ item.position_name|default:'' }}" style="display: none; padding: 3px 6px; font-size: 13px; border: 1px solid var(--primary, #3b82f6); border-radius: 4px; width: 110px;">
+            </div>
+          </td>
+
+          <!-- 5. 候选人 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            {% if item.membership %}
+              <a class="text-link font-medium" href="{% url 'talent_pool:detail' item.membership.pk %}" style="font-weight: 600; padding: 3px 6px; display: inline-block;">
+                {{ item.candidate.name|default:item.candidate }}
+              </a>
+            {% else %}
+              <strong style="padding: 3px 6px; display: inline-block;">{{ item.candidate.name|default:item.candidate }}</strong>
+            {% endif %}
+          </td>
+
+          <!-- 6. 初面面试官 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper text-cell-wrapper" data-field="first_interviewer">
+              {% if item.first_interviewer %}
+                <span class="cell-text">
+                  {{ item.first_interviewer }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box">
+                  填写初面
+                </span>
+              {% endif %}
+              <input type="text" class="cell-edit-input" value="{{ item.first_interviewer|default:'' }}" style="display: none; padding: 3px 6px; font-size: 13px; border: 1px solid var(--primary, #3b82f6); border-radius: 4px; width: 90px;">
+            </div>
+          </td>
+
+          <!-- 7. 二面面试官 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper text-cell-wrapper" data-field="second_interviewer">
+              {% if item.second_interviewer %}
+                <span class="cell-text">
+                  {{ item.second_interviewer }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box">
+                  填写二面
+                </span>
+              {% endif %}
+              <input type="text" class="cell-edit-input" value="{{ item.second_interviewer|default:'' }}" style="display: none; padding: 3px 6px; font-size: 13px; border: 1px solid var(--primary, #3b82f6); border-radius: 4px; width: 90px;">
+            </div>
+          </td>
+
+          <!-- 8. 面试结果 -->
+          <td style="text-align: center; white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper result-cell-wrapper" style="position: relative; display: inline-block;">
+              <span class="badge result-badge" style="cursor: pointer; padding: 3px 10px; font-size: 12.5px; border-radius: 6px; font-weight: 600; display: inline-block; {% if item.result == '未面试' %}background: rgba(100, 116, 139, 0.12); color: #475569;{% elif item.result == '录用' %}background: rgba(16, 185, 129, 0.15); color: #059669;{% elif item.result == '淘汰' %}background: rgba(239, 68, 68, 0.15); color: #dc2626;{% else %}background: rgba(245, 158, 11, 0.15); color: #d97706;{% endif %}">
+                {{ item.result|default:"未面试" }}
+              </span>
+              <!-- 快捷下拉菜单 -->
+              <div class="result-popover" style="display: none; position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 100; background: var(--panel, #ffffff); border: 1px solid var(--border, #cbd5e1); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 8px; min-width: 130px; text-align: left;">
+                <div class="result-options-list" style="display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto;">
+                  {% for opt in result_options %}
+                  <button type="button" class="result-opt-btn" data-value="{{ opt.name }}" style="background: none; border: none; text-align: left; padding: 4px 8px; border-radius: 4px; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+                    <span>{{ opt.name }}</span>
+                    {% if opt.name == item.result %}<span>✓</span>{% endif %}
+                  </button>
+                  {% endfor %}
+                </div>
+                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border, #e2e8f0);">
+                  <div style="display: flex; gap: 4px;">
+                    <input type="text" class="custom-result-input" placeholder="输入新结果" style="flex: 1; padding: 2px 5px; font-size: 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 4px;">
+                    <button type="button" class="button primary small custom-result-add-btn" style="padding: 2px 6px; font-size: 12px;">确定</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </td>
+
+          <!-- 9. 备注 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper text-cell-wrapper" data-field="notes">
+              {% if item.notes %}
+                <span class="cell-text" style="white-space: pre-wrap; word-break: break-word;">
+                  {{ item.notes }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box">
+                  填写备注
+                </span>
+              {% endif %}
+              <textarea class="cell-edit-input" rows="1" style="display: none; padding: 2px 6px; font-size: 13px; line-height: 20px; border: 1px solid var(--primary, #3b82f6); border-radius: 4px; width: 90px; height: 26px; font-family: inherit; resize: none; overflow: hidden; vertical-align: middle; box-sizing: border-box;">{{ item.notes|default:'' }}</textarea>
+            </div>
+          </td>
+
+          <!-- 10. 渠道 -->
+          <td style="white-space: nowrap; vertical-align: middle;">
+            <div class="cell-wrapper text-cell-wrapper" data-field="channel">
+              {% if item.channel %}
+                <span class="cell-text">
+                  {{ item.channel }}
+                </span>
+              {% else %}
+                <span class="cell-empty-box">
+                  填写渠道
+                </span>
+              {% endif %}
+              <input type="text" class="cell-edit-input" value="{{ item.channel|default:'' }}" style="display: none; padding: 3px 6px; font-size: 13px; border: 1px solid var(--primary, #3b82f6); border-radius: 4px; width: 85px;">
+            </div>
+          </td>
+
+          <!-- 11. 操作 -->
+          <td style="text-align: center; white-space: nowrap; vertical-align: middle;">
+            <form method="post" action="{% url 'talent_pool:interview_delete' item.pk %}" onsubmit="return confirm('确定要删除候选人 {{ item.candidate.name }} 的面试记录吗？');" style="margin: 0;">
+              {% csrf_token %}
+              <button type="submit" class="link-button danger small" style="color: var(--danger, #ef4444); cursor: pointer; padding: 2px 4px; font-size: 12.5px;" title="删除此记录">
+                删除
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="11" style="text-align: center; padding: 36px; color: var(--muted, #64748b);">
+            暂无面试信息记录。
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 分页器 -->
+  {% if paginator.num_pages > 1 %}
+    <nav class="pagination" aria-label="分页导航" style="margin-top: 20px; display: flex; justify-content: center; gap: 8px; align-items: center;">
+      {% if page_obj.has_previous %}
+        <a class="button secondary small" href="?page=1{% if preserved_query %}&amp;{{ preserved_query }}{% endif %}">首页</a>
+        <a class="button secondary small" href="?page={{ page_obj.previous_page_number }}{% if preserved_query %}&amp;{{ preserved_query }}{% endif %}">上一页</a>
+      {% endif %}
+
+      {% for p in page_range %}
+        {% if p == "..." %}
+          <span class="muted">…</span>
+        {% elif p == page_obj.number %}
+          <span class="button primary small" aria-current="page">{{ p }}</span>
+        {% else %}
+          <a class="button secondary small" href="?page={{ p }}{% if preserved_query %}&amp;{{ preserved_query }}{% endif %}">{{ p }}</a>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <a class="button secondary small" href="?page={{ page_obj.next_page_number }}{% if preserved_query %}&amp;{{ preserved_query }}{% endif %}">下一页</a>
+        <a class="button secondary small" href="?page={{ paginator.num_pages }}{% if preserved_query %}&amp;{{ preserved_query }}{% endif %}">末页</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</section>
+
+<!-- 时分选择弹窗 (Time Picker Modal) -->
+<div class="modal-overlay" id="time-picker-modal" hidden role="dialog" aria-modal="true" aria-labelledby="time-picker-modal-title">
+  <div class="modal-card" style="max-width: 360px; width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.18); border-radius: 10px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border, #e2e8f0);">
+      <h3 id="time-picker-modal-title" style="margin: 0; font-size: 15px; font-weight: 700;">选择面试时间</h3>
+      <button type="button" class="modal-close" data-close-modal="time-picker-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); line-height: 1;">×</button>
+    </div>
+    <div class="modal-body" style="padding: 18px;">
+      <!-- 滚轮选择区：上下渐淡显示临近时间 -->
+      <div class="time-wheel-container" style="display: flex; justify-content: center; align-items: center; gap: 24px; margin: 10px 0 18px 0; user-select: none;">
+        <!-- 小时滚轮 -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px;">小时 (可滚动鼠标)</div>
+          <div class="time-wheel-drum" id="hour-drum" style="position: relative; width: 88px; height: 165px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 0;">
+            <div class="drum-slot drum-p2" id="hour-p2" style="font-size: 13px; color: var(--muted); opacity: 0.22; height: 26px; display: flex; align-items: center;">07</div>
+            <div class="drum-slot drum-p1" id="hour-p1" style="font-size: 16px; color: var(--muted); opacity: 0.55; height: 30px; display: flex; align-items: center;">08</div>
+            <div class="drum-slot drum-curr" id="hour-curr" style="font-size: 24px; font-weight: 700; color: var(--primary, #2563eb); height: 42px; width: 100%; display: flex; align-items: center; justify-content: center; background: rgba(37, 99, 235, 0.08); border: 1.5px solid rgba(37, 99, 235, 0.35); border-radius: 8px;">09</div>
+            <div class="drum-slot drum-n1" id="hour-n1" style="font-size: 16px; color: var(--muted); opacity: 0.55; height: 30px; display: flex; align-items: center;">10</div>
+            <div class="drum-slot drum-n2" id="hour-n2" style="font-size: 13px; color: var(--muted); opacity: 0.22; height: 26px; display: flex; align-items: center;">11</div>
+          </div>
+        </div>
+
+        <div style="font-size: 28px; font-weight: 700; color: var(--muted); margin-top: 18px;">:</div>
+
+        <!-- 分钟滚轮 -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px;">分钟 (可滚动鼠标)</div>
+          <div class="time-wheel-drum" id="min-drum" style="position: relative; width: 88px; height: 165px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 0;">
+            <div class="drum-slot drum-p2" id="min-p2" style="font-size: 13px; color: var(--muted); opacity: 0.22; height: 26px; display: flex; align-items: center;">20</div>
+            <div class="drum-slot drum-p1" id="min-p1" style="font-size: 16px; color: var(--muted); opacity: 0.55; height: 30px; display: flex; align-items: center;">25</div>
+            <div class="drum-slot drum-curr" id="min-curr" style="font-size: 24px; font-weight: 700; color: var(--primary, #2563eb); height: 42px; width: 100%; display: flex; align-items: center; justify-content: center; background: rgba(37, 99, 235, 0.08); border: 1.5px solid rgba(37, 99, 235, 0.35); border-radius: 8px;">30</div>
+            <div class="drum-slot drum-n1" id="min-n1" style="font-size: 16px; color: var(--muted); opacity: 0.55; height: 30px; display: flex; align-items: center;">35</div>
+            <div class="drum-slot drum-n2" id="min-n2" style="font-size: 13px; color: var(--muted); opacity: 0.22; height: 26px; display: flex; align-items: center;">40</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快捷常用预设（支持管理与添加） -->
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 12px; color: var(--muted); font-weight: 600;">常用时间预设：</span>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="tp-add-curr-preset" class="link-button" style="font-size: 12px; padding: 0; color: var(--primary, #2563eb); cursor: pointer;" title="将当前选中的时间加入预设">+ 保存当前时间</button>
+            <button type="button" id="tp-toggle-manage-preset" class="link-button" style="font-size: 12px; padding: 0; color: var(--muted, #64748b); cursor: pointer;">管理</button>
+          </div>
+        </div>
+        <div id="tp-preset-list" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px;">
+          <!-- 动态加载与渲染 -->
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="button secondary" data-close-modal="time-picker-modal">取消</button>
+        <button type="button" id="tp-apply-btn" class="button primary">确认应用</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const getCsrfToken = () => {
+    return document.querySelector("[name=csrfmiddlewaretoken]")?.value ||
+      document.cookie.split("; ").find(row => row.startsWith("csrftoken="))?.split("=")[1] || "";
+  };
+
+  const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+  function formatDateWithWeekday(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const w = weekdays[d.getDay()];
+    return `${y}年${m}月${day}日 ${w}`;
+  }
+
+  // Flash highlight on save
+  function flashSaved(el) {
+    el.style.transition = "background-color 0.25s, box-shadow 0.25s";
+    el.style.backgroundColor = "rgba(16, 185, 129, 0.12)";
+    setTimeout(() => {
+      el.style.backgroundColor = "";
+    }, 600);
+  }
+
+  // Update interview backend API
+  async function updateInterview(tr, payload) {
+    const updateUrl = tr.dataset.updateUrl;
+    if (!updateUrl) return;
+    try {
+      const response = await fetch(updateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCsrfToken(),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+      });
+      return await response.json();
+    } catch (err) {
+      console.error("更新失败", err);
+    }
+  }
+
+  // 1. Date Cell Handling
+  document.querySelectorAll(".date-cell-wrapper").forEach((wrapper) => {
+    const tr = wrapper.closest("tr");
+    const textEl = wrapper.querySelector(".date-text");
+    const hiddenDate = wrapper.querySelector(".hidden-date-input");
+
+    const openPicker = () => {
+      if (hiddenDate.showPicker) {
+        hiddenDate.showPicker();
+      } else {
+        hiddenDate.style.opacity = "1";
+        hiddenDate.style.pointerEvents = "auto";
+        hiddenDate.style.width = "auto";
+        hiddenDate.style.height = "auto";
+        hiddenDate.focus();
+      }
+    };
+
+    textEl.addEventListener("click", openPicker);
+
+    hiddenDate.addEventListener("change", async () => {
+      const val = hiddenDate.value;
+      const formatted = formatDateWithWeekday(val);
+      if (formatted) {
+        textEl.className = "cell-text date-text";
+        textEl.textContent = formatted;
+      } else {
+        textEl.className = "cell-empty-box date-text";
+        textEl.textContent = "选择日期";
+      }
+      textEl.removeAttribute("style");
+      hiddenDate.style.opacity = "0";
+      hiddenDate.style.pointerEvents = "none";
+      hiddenDate.style.width = "0";
+      hiddenDate.style.height = "0";
+      flashSaved(textEl);
+      await updateInterview(tr, { interview_date: val });
+    });
+  });
+
+  // 2. Time Drum Wheel Logic
+  let activeTimeWrapper = null;
+  const timeModal = document.getElementById("time-picker-modal");
+  let curHour = 9;
+  let curMin = 30;
+
+  const hourDrum = document.getElementById("hour-drum");
+  const minDrum = document.getElementById("min-drum");
+
+  const hourP2 = document.getElementById("hour-p2");
+  const hourP1 = document.getElementById("hour-p1");
+  const hourCurr = document.getElementById("hour-curr");
+  const hourN1 = document.getElementById("hour-n1");
+  const hourN2 = document.getElementById("hour-n2");
+
+  const minP2 = document.getElementById("min-p2");
+  const minP1 = document.getElementById("min-p1");
+  const minCurr = document.getElementById("min-curr");
+  const minN1 = document.getElementById("min-n1");
+  const minN2 = document.getElementById("min-n2");
+
+  function renderHourWheel() {
+    const p2 = (curHour - 2 + 24) % 24;
+    const p1 = (curHour - 1 + 24) % 24;
+    const n1 = (curHour + 1) % 24;
+    const n2 = (curHour + 2) % 24;
+
+    hourP2.textContent = String(p2).padStart(2, "0");
+    hourP1.textContent = String(p1).padStart(2, "0");
+    hourCurr.textContent = String(curHour).padStart(2, "0");
+    hourN1.textContent = String(n1).padStart(2, "0");
+    hourN2.textContent = String(n2).padStart(2, "0");
+  }
+
+  function renderMinWheel() {
+    const p2 = (curMin - 10 + 60) % 60;
+    const p1 = (curMin - 5 + 60) % 60;
+    const n1 = (curMin + 5) % 60;
+    const n2 = (curMin + 10) % 60;
+
+    minP2.textContent = String(p2).padStart(2, "0");
+    minP1.textContent = String(p1).padStart(2, "0");
+    minCurr.textContent = String(curMin).padStart(2, "0");
+    minN1.textContent = String(n1).padStart(2, "0");
+    minN2.textContent = String(n2).padStart(2, "0");
+  }
+
+  // Click on adjacent hour slot
+  hourP2?.addEventListener("click", () => { curHour = (curHour - 2 + 24) % 24; renderHourWheel(); });
+  hourP1?.addEventListener("click", () => { curHour = (curHour - 1 + 24) % 24; renderHourWheel(); });
+  hourN1?.addEventListener("click", () => { curHour = (curHour + 1) % 24; renderHourWheel(); });
+  hourN2?.addEventListener("click", () => { curHour = (curHour + 2) % 24; renderHourWheel(); });
+
+  // Click on adjacent min slot
+  minP2?.addEventListener("click", () => { curMin = (curMin - 10 + 60) % 60; renderMinWheel(); });
+  minP1?.addEventListener("click", () => { curMin = (curMin - 5 + 60) % 60; renderMinWheel(); });
+  minN1?.addEventListener("click", () => { curMin = (curMin + 5) % 60; renderMinWheel(); });
+  minN2?.addEventListener("click", () => { curMin = (curMin + 10) % 60; renderMinWheel(); });
+
+  // Mouse wheel scroll on hour drum
+  hourDrum?.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      curHour = (curHour + 1) % 24;
+    } else {
+      curHour = (curHour - 1 + 24) % 24;
+    }
+    renderHourWheel();
+  }, { passive: false });
+
+  // Mouse wheel scroll on min drum
+  minDrum?.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      curMin = (curMin + 5) % 60;
+    } else {
+      curMin = (curMin - 5 + 60) % 60;
+    }
+    renderMinWheel();
+  }, { passive: false });
+
+  // Preset management
+  const defaultPresets = ["09:00", "09:30", "10:00", "10:30", "14:00", "14:30", "15:00", "16:00"];
+  let timePresets = [...defaultPresets];
+  let isManagingPresets = false;
+
+  try {
+    const saved = localStorage.getItem("talent_interview_time_presets");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        timePresets = parsed;
+      }
+    }
+  } catch (e) {}
+
+  function savePresets() {
+    try {
+      localStorage.setItem("talent_interview_time_presets", JSON.stringify(timePresets));
+    } catch (e) {}
+  }
+
+  const presetListEl = document.getElementById("tp-preset-list");
+  const toggleManageBtn = document.getElementById("tp-toggle-manage-preset");
+  const addCurrPresetBtn = document.getElementById("tp-add-curr-preset");
+
+  function renderPresets() {
+    if (!presetListEl) return;
+    presetListEl.innerHTML = "";
+    if (timePresets.length === 0) {
+      presetListEl.innerHTML = `<span style="font-size: 12px; color: var(--muted); padding: 4px 0;">暂无预设，点击右上角保存当前时间</span>`;
+      return;
+    }
+    timePresets.forEach((timeStr) => {
+      if (isManagingPresets) {
+        const chip = document.createElement("div");
+        chip.style.cssText = "display: inline-flex; align-items: center; background: var(--bg-surface, #f1f5f9); border: 1px solid var(--border, #cbd5e1); border-radius: 6px; padding: 2px 6px; font-size: 12px; gap: 4px;";
+        chip.innerHTML = `<span>${timeStr}</span><button type="button" class="del-btn" style="background: none; border: none; color: var(--danger, #ef4444); cursor: pointer; padding: 0 2px; font-weight: 700; font-size: 13px; line-height: 1;" title="删除预设">×</button>`;
+        chip.querySelector(".del-btn").addEventListener("click", () => {
+          timePresets = timePresets.filter((t) => t !== timeStr);
+          savePresets();
+          renderPresets();
+        });
+        presetListEl.appendChild(chip);
+      } else {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "button secondary small tp-preset";
+        btn.style.cssText = "padding: 3px 8px; font-size: 12px;";
+        btn.textContent = timeStr;
+        btn.addEventListener("click", () => {
+          const parts = timeStr.split(":");
+          curHour = parseInt(parts[0], 10);
+          curMin = parseInt(parts[1], 10);
+          renderHourWheel();
+          renderMinWheel();
+        });
+        presetListEl.appendChild(btn);
+      }
+    });
+  }
+
+  toggleManageBtn?.addEventListener("click", () => {
+    isManagingPresets = !isManagingPresets;
+    toggleManageBtn.textContent = isManagingPresets ? "完成" : "管理";
+    renderPresets();
+  });
+
+  addCurrPresetBtn?.addEventListener("click", () => {
+    const timeStr = `${String(curHour).padStart(2, "0")}:${String(curMin).padStart(2, "0")}`;
+    if (!timePresets.includes(timeStr)) {
+      timePresets.push(timeStr);
+      timePresets.sort();
+      savePresets();
+      renderPresets();
+      addCurrPresetBtn.textContent = "已添加 ✓";
+      setTimeout(() => {
+        addCurrPresetBtn.textContent = "+ 保存当前时间";
+      }, 800);
+    }
+  });
+
+  // Open modal
+  document.querySelectorAll(".time-cell-wrapper").forEach((wrapper) => {
+    const textEl = wrapper.querySelector(".time-text");
+    textEl.addEventListener("click", () => {
+      activeTimeWrapper = wrapper;
+      const currentVal = textEl.classList.contains("cell-empty-box") ? "" : textEl.textContent.trim();
+      const parts = currentVal.split(":");
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        curHour = parseInt(parts[0], 10) % 24;
+        curMin = parseInt(parts[1], 10) % 60;
+      } else {
+        curHour = 9;
+        curMin = 30;
+      }
+      renderHourWheel();
+      renderMinWheel();
+      renderPresets();
+      timeModal.hidden = false;
+      document.body.style.overflow = "hidden";
+    });
+  });
+
+  // Apply time
+  document.getElementById("tp-apply-btn")?.addEventListener("click", async () => {
+    if (!activeTimeWrapper) return;
+    const h = String(curHour).padStart(2, "0");
+    const m = String(curMin).padStart(2, "0");
+    const timeStr = `${h}:${m}`;
+    const textEl = activeTimeWrapper.querySelector(".time-text");
+    const tr = activeTimeWrapper.closest("tr");
+
+    textEl.className = "cell-text time-text";
+    textEl.textContent = timeStr;
+    textEl.removeAttribute("style");
+    flashSaved(textEl);
+
+    timeModal.hidden = true;
+    document.body.style.overflow = "";
+    await updateInterview(tr, { interview_time: timeStr });
+    activeTimeWrapper = null;
+  });
+
+  // Close modals
+  document.querySelectorAll("[data-close-modal]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.closeModal;
+      const modal = document.getElementById(targetId);
+      if (modal) {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+      }
+    });
+  });
+
+  // 3. Text Fields (岗位, 初面, 二面, 备注, 渠道)
+  document.querySelectorAll(".text-cell-wrapper").forEach((wrapper) => {
+    const fieldName = wrapper.dataset.field;
+    const tr = wrapper.closest("tr");
+    const textEl = wrapper.querySelector(".cell-text, .cell-empty-box");
+    const inputEl = wrapper.querySelector(".cell-edit-input");
+    const isTextarea = inputEl.tagName === "TEXTAREA";
+
+    const autoResize = () => {
+      if (!isTextarea) return;
+      const lines = (inputEl.value || "").split("\n").length;
+      if (lines > 1) {
+        inputEl.style.setProperty("height", "auto", "important");
+        inputEl.style.setProperty("height", Math.max(26, inputEl.scrollHeight) + "px", "important");
+      } else {
+        inputEl.style.setProperty("height", "26px", "important");
+      }
+    };
+
+    const startEdit = () => {
+      textEl.style.display = "none";
+      inputEl.style.display = "inline-block";
+      autoResize();
+      inputEl.focus();
+      inputEl.select();
+    };
+
+    textEl.addEventListener("click", startEdit);
+    if (isTextarea) {
+      inputEl.addEventListener("input", autoResize);
+    }
+
+    const finishEdit = async () => {
+      const val = inputEl.value.trim();
+      inputEl.style.display = "none";
+      if (isTextarea) inputEl.style.setProperty("height", "26px", "important");
+      textEl.style.display = "";
+
+      if (val) {
+        textEl.className = "cell-text";
+        textEl.textContent = val;
+      } else {
+        textEl.className = "cell-empty-box";
+        textEl.textContent = fieldName === "position_name" ? "填写岗位" : (fieldName === "channel" ? "填写渠道" : (fieldName === "notes" ? "填写备注" : "填写" + (fieldName === "first_interviewer" ? "初面" : "二面")));
+      }
+      textEl.removeAttribute("style");
+      flashSaved(textEl);
+      await updateInterview(tr, { [fieldName]: val });
+    };
+
+    inputEl.addEventListener("blur", finishEdit);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        if (!isTextarea) {
+          inputEl.blur();
+        } else if (e.ctrlKey) {
+          inputEl.blur();
+        }
+      }
+    });
+  });
+
+  // 5. Result Popover & Dynamic Custom Input
+  document.querySelectorAll(".result-cell-wrapper").forEach((wrapper) => {
+    const badge = wrapper.querySelector(".result-badge");
+    const popover = wrapper.querySelector(".result-popover");
+    const tr = wrapper.closest("tr");
+    const customInput = wrapper.querySelector(".custom-result-input");
+    const customAddBtn = wrapper.querySelector(".custom-result-add-btn");
+
+    badge.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".result-popover").forEach((p) => {
+        if (p !== popover) p.style.display = "none";
+      });
+      popover.style.display = popover.style.display === "block" ? "none" : "block";
+    });
+
+    const selectResult = async (val) => {
+      badge.textContent = val;
+      if (val === "未面试") {
+        badge.style.background = "rgba(100, 116, 139, 0.12)";
+        badge.style.color = "#475569";
+      } else if (val === "录用") {
+        badge.style.background = "rgba(16, 185, 129, 0.15)";
+        badge.style.color = "#059669";
+      } else if (val === "淘汰") {
+        badge.style.background = "rgba(239, 68, 68, 0.15)";
+        badge.style.color = "#dc2626";
+      } else {
+        badge.style.background = "rgba(245, 158, 11, 0.15)";
+        badge.style.color = "#d97706";
+      }
+      popover.style.display = "none";
+      flashSaved(badge);
+      await updateInterview(tr, { result: val });
+    };
+
+    popover.querySelectorAll(".result-opt-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectResult(btn.dataset.value);
+      });
+    });
+
+    customAddBtn?.addEventListener("click", () => {
+      const val = customInput.value.trim();
+      if (val) {
+        selectResult(val);
+      }
+    });
+
+    customInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        customAddBtn.click();
+      }
+    });
+  });
+
+  // Close popovers on outside click
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".result-cell-wrapper")) {
+      document.querySelectorAll(".result-popover").forEach((p) => {
+        p.style.display = "none";
+      });
+    }
+  });
+});
+</script>
+{% endblock %}

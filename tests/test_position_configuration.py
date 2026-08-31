@@ -968,3 +968,227 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
         self.assertContains(add_res, "审核负责人已保存")
         link = self.position.reviewer_links.get(reviewer__name="张三")
         self.assertEqual(link.reviewer.email, "zhangsan@nuptio.net")
+
+    def test_build_merged_jd_and_configuration_page_payload(self):
+        from recruitment.services.configuration import build_merged_jd
+
+        beisen = (
+            "岗位职责\n"
+            "1. 负责市场调研，分析热卖产品\n"
+            "2. 负责竞品分析\n"
+            "任职要求\n"
+            "1. 本科以上学历，英语6级\n"
+            "2. 工作满3年以上"
+        )
+        doc = (
+            "工作职责：\n"
+            "1. 负责市场调研，分析热卖产品\n"
+            "2. 负责供应商对接与谈判\n"
+            "任职资格：\n"
+            "1. 本科以上学历，英语6级\n"
+            "2. 具有家居产品开发经验者优先"
+        )
+        merged = build_merged_jd(beisen, doc)
+        self.assertIn("岗位职责：", merged)
+        self.assertIn("负责市场调研，分析热卖产品", merged)
+        self.assertIn("负责竞品分析", merged)
+        self.assertIn("负责供应商对接与谈判", merged)
+        self.assertIn("任职要求：", merged)
+        self.assertIn("本科以上学历，英语6级", merged)
+        self.assertIn("工作满3年以上", merged)
+        self.assertIn("具有家居产品开发经验者优先", merged)
+
+        # Test configuration detail view contains merged_jd data script
+        confirm_jd(self.position, PositionJdDecision.DecisionType.BEISEN, self.hr)
+        client = self.authenticated_client(self.hr)
+        response = client.get(
+            reverse("recruitment:configuration_detail", args=[self.position.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="beisen-jd-data"')
+        self.assertContains(response, 'id="merged-jd-data"')
+        self.assertContains(response, 'id="jd-rules-map-data"')
+        self.assertContains(response, "data-jd-decision-form")
+        self.assertContains(response, "jd-draft-notice")
+        self.assertContains(response, 'id="jd-history-modal"')
+        self.assertContains(response, "data-apply-jd-id")
+
+    def test_clean_diff_summary_text_and_plain_format(self):
+        from analysis.services.jd_comparison import clean_diff_summary_text
+
+        raw_md = (
+            "### 1. 核心职责差异\n"
+            "- 北森强调**日常运维**，参考资料偏向**架构设计**。\n\n"
+            "### 2. 硬性要求差异\n"
+            "- 学历要求一致，工作年限`3年以上`。"
+        )
+        cleaned = clean_diff_summary_text(raw_md)
+        self.assertNotIn("###", cleaned)
+        self.assertNotIn("**", cleaned)
+        self.assertNotIn("`", cleaned)
+        self.assertIn("【核心职责差异】", cleaned)
+        self.assertIn("【硬性要求差异】", cleaned)
+
+    def test_confirm_jd_auto_adopts_matching_rule(self):
+        # 1. Confirm V1 JD and create Rule V1, then publish Rule V1
+        d1 = confirm_jd(self.position, PositionJdDecision.DecisionType.BEISEN, self.hr)
+        r1 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=1,
+            jd_decision=d1,
+            evaluation_jd=d1.confirmed_jd,
+            source_jd_snapshot=d1.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r1.publish(self.hr)
+        self.assertEqual(r1.status, PositionRuleVersion.Status.PUBLISHED)
+
+        # 2. Confirm V2 JD (new text)
+        d2 = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.MANUAL,
+            self.hr,
+            confirmed_jd="全新版岗位说明内容",
+        )
+        r1.refresh_from_db()
+        # Rule V1 should be archived because V2 has no rule yet
+        self.assertEqual(r1.status, PositionRuleVersion.Status.ARCHIVED)
+
+        # 3. Create Rule V2 under V2 JD and publish it
+        r2 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=2,
+            jd_decision=d2,
+            evaluation_jd=d2.confirmed_jd,
+            source_jd_snapshot=d2.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r2.publish(self.hr)
+        self.assertEqual(r2.status, PositionRuleVersion.Status.PUBLISHED)
+
+        # 4. Re-confirm V1 JD (using V1 content)
+        d1_reactivated = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.BEISEN,
+            self.hr,
+            confirmed_jd=d1.confirmed_jd,
+        )
+        self.assertEqual(d1_reactivated.pk, d1.pk)
+        self.assertTrue(d1_reactivated.is_current)
+
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        # Rule V1 should now be auto-activated to PUBLISHED, and Rule V2 archived!
+        self.assertEqual(r1.status, PositionRuleVersion.Status.PUBLISHED)
+        self.assertEqual(r2.status, PositionRuleVersion.Status.ARCHIVED)
+
+    def test_jd_decision_deletion_and_protection(self):
+        from recruitment.services.configuration import delete_jd_decision
+
+        # Create two JD decisions
+        d1 = confirm_jd(self.position, PositionJdDecision.DecisionType.BEISEN, self.hr)
+        d2 = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.MANUAL,
+            self.hr,
+            confirmed_jd="修改后的岗位说明内容",
+        )
+        d1.refresh_from_db()
+        self.assertFalse(d1.is_current)
+        self.assertTrue(d2.is_current)
+
+        # 1. Deleting current active JD raises ValueError
+        with self.assertRaises(ValueError) as ctx:
+            delete_jd_decision(d2, self.hr)
+        self.assertIn("当前正在生效", str(ctx.exception))
+
+        # 2. Deleting non-current JD without rules succeeds
+        delete_jd_decision(d1, self.hr)
+        self.assertFalse(PositionJdDecision.objects.filter(pk=d1.pk).exists())
+
+        # 3. Create another JD and link a rule to it
+        d3 = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.MANUAL,
+            self.hr,
+            confirmed_jd="第三版岗位说明内容",
+        )
+        d2.refresh_from_db()
+        rule = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=1,
+            jd_decision=d2,
+            evaluation_jd=d2.confirmed_jd,
+            source_jd_snapshot=d2.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+
+        # Non-admin deleting d2 raises ValueError
+        with self.assertRaises(ValueError) as ctx:
+            delete_jd_decision(d2, self.hr)
+        self.assertIn("无法直接删除", str(ctx.exception))
+
+        # Admin with force=True deletes d2 and unlinks rule
+        delete_jd_decision(d2, self.admin, force=True)
+        self.assertFalse(PositionJdDecision.objects.filter(pk=d2.pk).exists())
+        rule.refresh_from_db()
+        self.assertIsNone(rule.jd_decision)
+
+    def test_rule_version_deletion_and_publishing(self):
+        from analysis.services.rules import delete_rule_version
+
+        decision = confirm_jd(self.position, PositionJdDecision.DecisionType.BEISEN, self.hr)
+        r1 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=1,
+            jd_decision=decision,
+            evaluation_jd=decision.confirmed_jd,
+            source_jd_snapshot=decision.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r1.publish(self.hr)
+        self.assertEqual(r1.status, PositionRuleVersion.Status.PUBLISHED)
+
+        # Cannot delete active published rule
+        with self.assertRaises(ValueError) as ctx:
+            delete_rule_version(r1, self.hr)
+        self.assertIn("已发布", str(ctx.exception))
+
+        # Create r2 and publish it (r1 becomes archived)
+        r2 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=2,
+            jd_decision=decision,
+            evaluation_jd=decision.confirmed_jd,
+            source_jd_snapshot=decision.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r2.publish(self.hr)
+        r1.refresh_from_db()
+        self.assertEqual(r1.status, PositionRuleVersion.Status.ARCHIVED)
+
+        # Can delete archived r1 when no analysis items
+        delete_rule_version(r1, self.hr)
+        self.assertFalse(PositionRuleVersion.objects.filter(pk=r1.pk).exists())
+
+        # Test view endpoint for rule delete
+        r3 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=3,
+            jd_decision=decision,
+            evaluation_jd=decision.confirmed_jd,
+            source_jd_snapshot=decision.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        client = self.authenticated_client(self.hr)
+        res = client.post(reverse("analysis:rule_delete", args=[r3.pk]))
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(PositionRuleVersion.objects.filter(pk=r3.pk).exists())
+
+

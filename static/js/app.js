@@ -288,6 +288,10 @@ async function submitAsyncForm(form, submitter) {
     const payload = await response.json();
     showInlineFeedback(form, payload.message || "操作已完成。", response.ok && payload.ok);
     if (response.ok && payload.ok) {
+      if (payload.reload || payload.redirect_url) {
+        window.location.href = payload.redirect_url || window.location.href;
+        return;
+      }
       updateConfigurationState(payload.state, payload.reference_position);
     }
   } catch (error) {
@@ -409,11 +413,81 @@ document.addEventListener("submit", (event) => {
   });
 });
 
+// Smart navigation history tracking (tracks distinct system pages)
+(() => {
+  const STORAGE_KEY = "smart_screening_nav_stack";
+  try {
+    const currentUrl = window.location.href;
+    const currentPath = window.location.pathname;
+    if (
+      !currentPath.includes("/accounts/login") &&
+      !currentPath.includes("/accounts/logout") &&
+      !currentPath.includes("/preview") &&
+      !currentPath.includes("/download")
+    ) {
+      let stack = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
+      if (stack.length > 0) {
+        const lastUrl = stack[stack.length - 1];
+        try {
+          const lastUrlObj = new URL(lastUrl, window.location.origin);
+          if (lastUrlObj.pathname === currentPath) {
+            stack[stack.length - 1] = currentUrl;
+          } else {
+            stack.push(currentUrl);
+          }
+        } catch (_) {
+          stack.push(currentUrl);
+        }
+      } else {
+        stack.push(currentUrl);
+      }
+      if (stack.length > 20) stack = stack.slice(-20);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stack));
+    }
+  } catch (_) {}
+})();
+
+function handleSmartBack(fallbackUrl = "/") {
+  const STORAGE_KEY = "smart_screening_nav_stack";
+  try {
+    let stack = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
+    const currentPath = window.location.pathname;
+    while (stack.length > 0) {
+      const top = stack.pop();
+      try {
+        const topUrl = new URL(top, window.location.origin);
+        if (topUrl.pathname !== currentPath && topUrl.origin === window.location.origin) {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stack));
+          window.location.assign(top);
+          return;
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  if (document.referrer && document.referrer.startsWith(window.location.origin)) {
+    try {
+      const refUrl = new URL(document.referrer);
+      if (
+        refUrl.pathname !== window.location.pathname &&
+        !refUrl.pathname.includes("/login") &&
+        !refUrl.pathname.includes("/logout")
+      ) {
+        window.location.assign(document.referrer);
+        return;
+      }
+    } catch (_) {}
+  }
+
+  window.location.assign(fallbackUrl);
+}
+
 document.addEventListener("click", (event) => {
   const backButton = event.target.closest("[data-back-button]");
   if (backButton) {
+    event.preventDefault();
     const fallbackUrl = backButton.dataset.fallbackUrl || "/";
-    window.location.assign(fallbackUrl);
+    handleSmartBack(fallbackUrl);
     return;
   }
   const cancelButton = event.target.closest("[data-task-overlay-cancel]");
@@ -506,7 +580,245 @@ function enhanceReviewerEmailAutoFill(root = document) {
   });
 }
 
+function enhanceJdDecisionDynamicAutofill(root = document) {
+  root.querySelectorAll("form[data-jd-decision-form]").forEach((form) => {
+    if (form.dataset.jdDynamicAutofillReady) return;
+    form.dataset.jdDynamicAutofillReady = "true";
+
+    const select = form.querySelector('select[name="decision_type"]');
+    const textarea = form.querySelector('textarea[name="confirmed_jd"]');
+    const noticeNode = form.querySelector("#jd-draft-notice, .jd-draft-notice");
+    if (!select || !textarea) return;
+
+    let beisenJd = "";
+    let mergedJd = "";
+    try {
+      const beisenScript = document.getElementById("beisen-jd-data");
+      if (beisenScript) beisenJd = JSON.parse(beisenScript.textContent || '""');
+    } catch (_) {}
+    try {
+      const mergedScript = document.getElementById("merged-jd-data");
+      if (mergedScript) mergedJd = JSON.parse(mergedScript.textContent || '""');
+    } catch (_) {}
+
+    let manualDraft = textarea.value;
+
+    const handleTypeChange = () => {
+      const mode = select.value;
+      if (mode === "beisen") {
+        textarea.value = beisenJd;
+        if (noticeNode) {
+          noticeNode.textContent = "已自动载入北森原始岗位说明。";
+          noticeNode.hidden = false;
+        }
+      } else if (mode === "merged") {
+        textarea.value = mergedJd || beisenJd;
+        if (noticeNode) {
+          noticeNode.textContent = "已自动生成并载入合并草稿，您可在下方直接查看和调整，确认后点击下方按钮。";
+          noticeNode.hidden = false;
+        }
+      } else if (mode === "manual") {
+        if (manualDraft && manualDraft !== beisenJd && manualDraft !== mergedJd) {
+          textarea.value = manualDraft;
+        }
+        if (noticeNode) {
+          noticeNode.textContent = "您可以直接在下方自由编辑与修改岗位说明。";
+          noticeNode.hidden = false;
+        }
+      }
+    };
+
+    textarea.addEventListener("input", () => {
+      if (select.value === "manual") {
+        manualDraft = textarea.value;
+      }
+    });
+
+    select.addEventListener("change", handleTypeChange);
+  });
+
+  root.querySelectorAll("[data-apply-jd-id], [data-load-jd-version]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const jdId = btn.dataset.applyJdId;
+      const directVersion = btn.dataset.loadJdVersion;
+      const directType = btn.dataset.decisionType || "manual";
+      const directContent = btn.dataset.jdContent || "";
+
+      let jdRulesMap = {};
+      try {
+        const mapScript = document.getElementById("jd-rules-map-data");
+        if (mapScript) jdRulesMap = JSON.parse(mapScript.textContent || "{}");
+      } catch (_) {}
+
+      const form = document.querySelector("form[data-jd-decision-form]");
+      if (!form) return;
+      const select = form.querySelector('select[name="decision_type"]');
+      const textarea = form.querySelector('textarea[name="confirmed_jd"]');
+      const noticeNode = form.querySelector("#jd-draft-notice, .jd-draft-notice");
+
+      let version = directVersion || "";
+      let decisionType = directType;
+      let decisionTypeDisplay = "人工调整";
+      let confirmedJd = directContent;
+      let rules = [];
+
+      if (jdId && jdRulesMap[jdId]) {
+        const jdData = jdRulesMap[jdId];
+        version = jdData.version;
+        decisionType = jdData.decision_type;
+        decisionTypeDisplay = jdData.decision_type_display || "历史版本";
+        confirmedJd = jdData.confirmed_jd;
+        rules = jdData.rules || [];
+      }
+
+      if (select) select.value = decisionType;
+      if (textarea) textarea.value = confirmedJd;
+
+      if (noticeNode) {
+        noticeNode.textContent = `已应用岗位说明历史版本 V${version}，下方已同步展示其对应的规则列表。请在核对无误后点击「确认岗位说明」按钮正式生效。`;
+        noticeNode.hidden = false;
+      }
+
+      // Close modal if open
+      const modal = document.getElementById("jd-history-modal");
+      if (modal) {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+      }
+
+      // Dynamically update Step 3 Rules
+      const badgeBox = document.getElementById("rule-association-badge-box");
+      if (badgeBox && version) {
+        badgeBox.innerHTML = `
+          <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: #2563eb; font-weight: 600; font-size: 13px; padding: 4px 10px; border-radius: 6px;">
+            关联所选岗位说明：V${version}（${decisionTypeDisplay}）
+          </span>
+          <small class="muted">（点击上方「确认岗位说明」后自动采用生效）</small>
+        `;
+      }
+
+      const ruleListContainer = document.getElementById("rule-list-container");
+      if (ruleListContainer && version) {
+        const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        const csrfToken = csrfInput ? csrfInput.value : "";
+
+        if (rules.length === 0) {
+          ruleListContainer.innerHTML = `
+            <div class="empty" style="padding: 24px; text-align: center; color: var(--muted, #64748b);">
+              所选岗位说明（V${version}）下暂无评估规则，确认岗位说明后可点击上方“智能生成草稿”或“手工创建草稿”。
+            </div>
+          `;
+        } else {
+          let html = "";
+          rules.forEach((rule) => {
+            let statusBadge = "";
+            if (rule.status === "published") {
+              statusBadge = `<span class="badge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.12); color: #059669; font-weight: 600;">已发布生效</span>`;
+            } else if (rule.status === "draft") {
+              statusBadge = `<span class="badge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.12); color: #d97706;">草稿</span>`;
+            } else {
+              statusBadge = `<span class="badge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(100, 116, 139, 0.1); color: #64748b;">历史归档</span>`;
+            }
+
+            let actionButtons = `<a class="button secondary small" href="${rule.detail_url}">查看</a>`;
+            if (rule.status === "draft") {
+              if (rule.edit_url) {
+                actionButtons += `<a class="button secondary small" href="${rule.edit_url}">编辑</a>`;
+              }
+              actionButtons += `
+                <form method="post" action="${rule.publish_url}" style="margin: 0;">
+                  <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+                  <button type="submit" class="button primary small">立即发布</button>
+                </form>
+              `;
+            } else if (rule.status === "archived") {
+              actionButtons += `
+                <form method="post" action="${rule.publish_url}" style="margin: 0;" onsubmit="return confirm('确定要将历史规则 V${rule.version} 重新激活并发布为当前生效规则吗？');">
+                  <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+                  <button type="submit" class="button secondary small">激活此规则</button>
+                </form>
+              `;
+            }
+
+            if (rule.status !== "published") {
+              actionButtons += `
+                <form method="post" action="${rule.delete_url}" onsubmit="return confirm('确定要删除岗位规则 V${rule.version} 吗？');" style="margin: 0;">
+                  <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+                  <button type="submit" class="link-button danger small" style="color: var(--danger, #ef4444); cursor: pointer; padding: 4px 8px; font-size: 13px;">
+                    删除
+                  </button>
+                </form>
+              `;
+            }
+
+            html += `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--bg-surface, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: var(--radius-sm, 6px); margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <strong>规则 V${rule.version}</strong>
+                  ${statusBadge}
+                  <span class="badge" style="background: rgba(100, 116, 139, 0.1); color: #475569; font-size: 12px; padding: 2px 6px; border-radius: 4px;">
+                    基于 JD V${version}
+                  </span>
+                  <small class="muted">${rule.created_at}</small>
+                </div>
+                <div class="actions" style="display: flex; align-items: center; gap: 8px;">
+                  ${actionButtons}
+                </div>
+              </div>
+            `;
+          });
+          ruleListContainer.innerHTML = html;
+        }
+      }
+
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
+}
+
+function enhanceModals() {
+  document.addEventListener("click", (e) => {
+    const openBtn = e.target.closest("[data-open-modal]");
+    if (openBtn) {
+      const modalId = openBtn.dataset.openModal;
+      const modal = document.getElementById(modalId);
+      if (modal) {
+        modal.hidden = false;
+        document.body.style.overflow = "hidden";
+      }
+      return;
+    }
+    const closeBtn = e.target.closest("[data-close-modal]");
+    if (closeBtn) {
+      const modalId = closeBtn.dataset.closeModal;
+      const modal = document.getElementById(modalId);
+      if (modal) {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+      }
+      return;
+    }
+    if (e.target.classList && e.target.classList.contains("modal-overlay")) {
+      e.target.hidden = true;
+      document.body.style.overflow = "";
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.querySelectorAll(".modal-overlay:not([hidden])").forEach((modal) => {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+      });
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  enhanceReviewerEmailAutoFill(document);
+  enhanceJdDecisionDynamicAutofill(document);
+  enhanceModals(document);
+
   const themeOrder = ["system", "light", "dark"];
   const themeLabels = {
     system: "跟随系统",

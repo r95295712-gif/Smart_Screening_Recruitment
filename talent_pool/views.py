@@ -3,7 +3,9 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
-from django.db.models import Count, Prefetch, Q
+from django.db import models
+from django.db.models import Count, F, Prefetch, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.decorators import system_admin_required
@@ -15,17 +17,35 @@ from .forms import (
     CandidateNoteForm,
     RecommendationForm,
     TalentFilterForm,
+    TalentInterviewFilterForm,
+    TalentInterviewForm,
     TalentTagForm,
     TalentTagSearchForm,
 )
-from .models import CandidateNote, TalentMembership, TalentTag, TalentTagAssignment
-from .services import TalentPoolError, add_candidate, recommend_candidate
+from .models import (
+    CandidateNote,
+    InterviewResultOption,
+    TalentInterview,
+    TalentMembership,
+    TalentTag,
+    TalentTagAssignment,
+)
+from .services import (
+    TalentPoolError,
+    add_candidate,
+    add_custom_result_option,
+    backfill_talent_interviews,
+    extract_talent_profile_details,
+    get_all_result_options,
+    recommend_candidate,
+)
 
 PAGE_SIZE = 20
 
 
 @login_required
 def talent_list(request):
+    backfill_talent_interviews()
     form = TalentFilterForm(request.GET or None)
 
     memberships = TalentMembership.objects.filter(
@@ -87,6 +107,7 @@ def talent_list(request):
         page_range = []
 
     tags = TalentTag.objects.filter(is_active=True).select_related("created_by")
+    interview_count = TalentInterview.objects.count()
     return render(
         request,
         "talent_pool/list.html",
@@ -99,6 +120,7 @@ def talent_list(request):
             "form": form,
             "tags": tags,
             "tag_form": TalentTagForm(),
+            "interview_count": interview_count,
         },
     )
 
@@ -192,6 +214,14 @@ def membership_detail(request, pk):
             )
         )
     )
+    notes = list(membership.candidate.notes.all())
+    unified_remark = "\n\n".join([n.content.strip() for n in notes if n.content.strip()])
+    latest_note = notes[-1] if notes else None
+    latest_note_time = latest_note.updated_at if latest_note else None
+    latest_note_author = (
+        latest_note.author.username if (latest_note and latest_note.author) else ""
+    )
+    details = extract_talent_profile_details(membership.candidate)
     return render(
         request,
         "talent_pool/detail.html",
@@ -200,8 +230,16 @@ def membership_detail(request, pk):
             "resume": resume,
             "all_tags": TalentTag.objects.filter(is_active=True),
             "note_form": CandidateNoteForm(),
+            "unified_remark": unified_remark,
+            "latest_note_time": latest_note_time,
+            "latest_note_author": latest_note_author,
             "resume_preview_available": resume_preview_available,
             "resume_download_available": bool(resume and resume.source_file),
+            "age": details["age"],
+            "native_place": details["native_place"],
+            "school_display": details["school_display"],
+            "work_records": details["work_records"],
+            "skills": details["skills"],
         },
     )
 
@@ -285,14 +323,37 @@ def remove_tag(request, pk, tag_id):
 def add_note(request, pk):
     membership = get_object_or_404(TalentMembership, pk=pk)
     if request.method == "POST":
-        form = CandidateNoteForm(request.POST)
-        if form.is_valid():
-            note = form.save(commit=False)
-            note.candidate = membership.candidate
-            note.author = request.user
-            note.scope = CandidateNote.Scope.TALENT
-            note.save()
-            messages.success(request, "备注已添加。")
+        content = request.POST.get("content", "").strip()
+        existing_notes = list(
+            CandidateNote.objects.filter(candidate=membership.candidate).order_by("-updated_at", "-created_at")
+        )
+        if existing_notes:
+            primary_note = existing_notes[0]
+            if content:
+                primary_note.content = content
+                primary_note.author = request.user
+                primary_note.scope = CandidateNote.Scope.TALENT
+                primary_note.save()
+                if len(existing_notes) > 1:
+                    CandidateNote.objects.filter(
+                        candidate=membership.candidate
+                    ).exclude(pk=primary_note.pk).delete()
+                messages.success(request, "人才库备注已保存。")
+            else:
+                CandidateNote.objects.filter(candidate=membership.candidate).delete()
+                messages.success(request, "备注已清空。")
+        else:
+            if content:
+                CandidateNote.objects.create(
+                    candidate=membership.candidate,
+                    author=request.user,
+                    scope=CandidateNote.Scope.TALENT,
+                    content=content,
+                )
+                messages.success(request, "人才库备注已保存。")
+            else:
+                messages.info(request, "备注内容为空，未作修改。")
+        record_audit(request.user, "talent_note.save", membership)
     return redirect("talent_pool:detail", pk=membership.pk)
 
 
@@ -372,3 +433,218 @@ def restore_membership(request, pk):
         record_audit(request.user, "talent.restore", membership)
         messages.success(request, "人才库成员已恢复。")
     return redirect("recruitment:recycle_bin")
+
+
+@login_required
+def interview_list(request):
+    backfill_talent_interviews()
+    form = TalentInterviewFilterForm(request.GET or None)
+
+    interviews = TalentInterview.objects.select_related("candidate", "membership").all()
+
+    if form.is_valid():
+        q = form.cleaned_data.get("q")
+        if q:
+            interviews = interviews.filter(
+                Q(candidate__name__icontains=q)
+                | Q(position_name__icontains=q)
+                | Q(first_interviewer__icontains=q)
+                | Q(second_interviewer__icontains=q)
+                | Q(notes__icontains=q)
+                | Q(channel__icontains=q)
+                | Q(result__icontains=q)
+            )
+        pos = form.cleaned_data.get("position")
+        if pos:
+            interviews = interviews.filter(position_name__icontains=pos)
+        res = form.cleaned_data.get("result")
+        if res:
+            interviews = interviews.filter(result=res)
+        interviewer = form.cleaned_data.get("interviewer")
+        if interviewer:
+            interviews = interviews.filter(
+                Q(first_interviewer__icontains=interviewer)
+                | Q(second_interviewer__icontains=interviewer)
+            )
+        ch = form.cleaned_data.get("channel")
+        if ch:
+            interviews = interviews.filter(channel__icontains=ch)
+        d_from = form.cleaned_data.get("date_from")
+        if d_from:
+            interviews = interviews.filter(interview_date__gte=d_from)
+        d_to = form.cleaned_data.get("date_to")
+        if d_to:
+            interviews = interviews.filter(interview_date__lte=d_to)
+
+    interviews = interviews.order_by(
+        models.F("interview_date").desc(nulls_last=True),
+        "-created_at",
+        "-id",
+    )
+
+    paginator = Paginator(interviews, PAGE_SIZE)
+    raw_page = request.GET.get("page", 1)
+    try:
+        page_number = int(raw_page)
+        if page_number < 1:
+            page_number = 1
+        page_obj = paginator.page(page_number)
+    except (ValueError, TypeError, PageNotAnInteger):
+        page_number = 1
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_number = paginator.num_pages if paginator.num_pages > 0 else 1
+        page_obj = paginator.page(page_number)
+
+    query_params = request.GET.copy()
+    if "page" in query_params:
+        query_params.pop("page")
+    preserved_query = query_params.urlencode()
+
+    if paginator.num_pages > 1:
+        try:
+            page_range = paginator.get_elided_page_range(
+                number=page_obj.number, on_each_side=2, on_ends=1
+            )
+        except Exception:
+            page_range = paginator.page_range
+    else:
+        page_range = []
+
+    all_positions = sorted(
+        set(
+            p.strip()
+            for p in TalentInterview.objects.exclude(position_name="").values_list(
+                "position_name", flat=True
+            )
+            if p and p.strip()
+        )
+    )
+    first_ints = [
+        x.strip()
+        for x in TalentInterview.objects.exclude(first_interviewer="").values_list(
+            "first_interviewer", flat=True
+        )
+        if x and x.strip()
+    ]
+    second_ints = [
+        x.strip()
+        for x in TalentInterview.objects.exclude(second_interviewer="").values_list(
+            "second_interviewer", flat=True
+        )
+        if x and x.strip()
+    ]
+    all_interviewers = sorted(set(first_ints + second_ints))
+
+    result_options = get_all_result_options()
+
+    return render(
+        request,
+        "talent_pool/interview_list.html",
+        {
+            "page_obj": page_obj,
+            "interviews": page_obj.object_list,
+            "paginator": paginator,
+            "page_range": page_range,
+            "preserved_query": preserved_query,
+            "form": form,
+            "positions": all_positions,
+            "interviewers": all_interviewers,
+            "result_options": result_options,
+        },
+    )
+
+
+@login_required
+def interview_update_api(request, pk):
+    interview = get_object_or_404(TalentInterview, pk=pk)
+    if request.method == "POST":
+        import json
+        from datetime import datetime
+
+        if request.content_type == "application/json":
+            try:
+                data = json.loads(request.body.decode("utf-8"))
+            except Exception:
+                data = {}
+        else:
+            data = request.POST
+
+        if "interview_date" in data:
+            date_val = str(data.get("interview_date", "")).strip()
+            if date_val:
+                try:
+                    interview.interview_date = datetime.strptime(
+                        date_val, "%Y-%m-%d"
+                    ).date()
+                except ValueError:
+                    pass
+            else:
+                interview.interview_date = None
+
+        if "interview_time" in data:
+            interview.interview_time = str(data.get("interview_time", "")).strip()
+
+        if "position_name" in data:
+            interview.position_name = str(data.get("position_name", "")).strip()
+
+        if "first_interviewer" in data:
+            interview.first_interviewer = str(
+                data.get("first_interviewer", "")
+            ).strip()
+
+        if "second_interviewer" in data:
+            interview.second_interviewer = str(
+                data.get("second_interviewer", "")
+            ).strip()
+
+        if "result" in data:
+            res_val = str(data.get("result", "")).strip()
+            if res_val:
+                add_custom_result_option(res_val)
+                interview.result = res_val
+
+        if "notes" in data:
+            interview.notes = str(data.get("notes", "")).strip()
+
+        if "channel" in data:
+            interview.channel = str(data.get("channel", "")).strip()
+
+        interview.save()
+        record_audit(request.user, "talent_interview.update", interview)
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": "面试记录已更新。",
+                "interview": {
+                    "id": interview.pk,
+                    "date_str": (
+                        interview.interview_date.strftime("%Y-%m-%d")
+                        if interview.interview_date
+                        else ""
+                    ),
+                    "date_formatted": interview.formatted_date_with_weekday or "-",
+                    "time": interview.interview_time or "-",
+                    "position_name": interview.position_name or "-",
+                    "first_interviewer": interview.first_interviewer or "",
+                    "second_interviewer": interview.second_interviewer or "",
+                    "result": interview.result,
+                    "result_color_type": interview.result_color_type,
+                    "notes": interview.notes or "",
+                    "channel": interview.channel or "",
+                },
+            }
+        )
+    return JsonResponse({"ok": False, "message": "Method not allowed"}, status=405)
+
+
+@login_required
+def interview_delete(request, pk):
+    interview = get_object_or_404(TalentInterview, pk=pk)
+    if request.method == "POST":
+        interview.delete()
+        record_audit(request.user, "talent_interview.delete", interview)
+        messages.success(request, "面试记录已删除。")
+    return redirect("talent_pool:interview_list")
+

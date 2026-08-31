@@ -2,8 +2,161 @@
 {% block title %}{{ membership.candidate }}{% endblock %}
 {% block back_url %}{% url 'talent_pool:list' %}{% endblock %}
 {% block content %}
-<div class="page-header"><div><h1>{{ membership.candidate }}</h1><p>{{ membership.get_status_display }} · 入库于 {{ membership.joined_at|date:"Y-m-d H:i" }}</p></div><div class="actions">{% if resume_preview_available %}<a class="button primary" target="_blank" rel="noopener" href="{% url 'recruitment:preview_resume' resume.pk %}">在线查看简历</a>{% else %}<span class="muted">暂无可在线预览的简历</span>{% endif %}{% if resume_download_available %}<a class="button secondary" href="{% url 'recruitment:download_resume' resume.pk %}">下载简历</a>{% endif %}</div></div>
-<div class="grid-two"><section class="panel"><h2>候选人资料</h2><dl class="detail-list"><dt>来源岗位</dt><dd>{{ membership.position.name|default:"-" }}</dd><dt>手机</dt><dd>{{ membership.candidate.phone|default:"-" }}</dd><dt>邮箱</dt><dd>{{ membership.candidate.email|default:"-" }}</dd><dt>公司</dt><dd>{{ membership.candidate.current_company|default:"-" }}</dd><dt>学校</dt><dd>{{ membership.candidate.school|default:"-" }}</dd><dt>技能</dt><dd>{{ membership.candidate.skills_text|default:"-" }}</dd></dl></section>
-<section class="panel"><h2>团队标签</h2><div class="actions">{% for assignment in membership.tag_assignments.all %}<form method="post" action="{% url 'talent_pool:remove_tag' membership.pk assignment.tag_id %}">{% csrf_token %}<button class="status" type="submit">{{ assignment.tag.name }} ×</button></form>{% empty %}<span class="muted">暂无标签</span>{% endfor %}</div><form method="post" action="{% url 'talent_pool:assign_tag' membership.pk %}" class="actions">{% csrf_token %}<select name="tag_id">{% for tag in all_tags %}<option value="{{ tag.pk }}">{{ tag.name }}</option>{% endfor %}</select><button class="button secondary" type="submit">添加标签</button></form></section></div>
-<section class="panel"><h2>备注</h2><div class="list">{% for note in membership.candidate.notes.all %}<div class="list-row"><div><strong>备注</strong><p class="pre-wrap">{{ note.content }}</p>{% if note.author_id == request.user.pk %}<form method="post" action="{% url 'talent_pool:edit_note' note.pk %}" class="stack-form">{% csrf_token %}<label>备注<textarea name="content" rows="3">{{ note.content }}</textarea></label><button class="link-button" type="submit">修改备注</button></form>{% endif %}</div><div><time>{{ note.created_at|date:"Y-m-d H:i" }}</time>{% if note.author_id == request.user.pk or request.user.is_system_admin %}<form method="post" action="{% url 'talent_pool:delete_note' note.pk %}">{% csrf_token %}<button class="link-button danger" type="submit">删除</button></form>{% endif %}</div></div>{% empty %}<div class="empty">暂无备注</div>{% endfor %}</div><form method="post" action="{% url 'talent_pool:add_note' membership.pk %}" class="stack-form">{% csrf_token %}{{ note_form.as_div }}<button class="button primary" type="submit">添加备注</button></form></section>
+<div class="page-header">
+  <div>
+    <h1>{{ membership.candidate }}</h1>
+    <p>
+      <span class="status success">{{ membership.get_status_display }}</span>
+      <span class="muted">· 入库于 {{ membership.joined_at|date:"Y-m-d H:i" }}</span>
+      {% if membership.position %}
+      <span class="muted">· 来源岗位：{{ membership.position.name }}</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    {% if resume_preview_available %}
+    <a class="button primary" target="_blank" rel="noopener" href="{% url 'recruitment:preview_resume' resume.pk %}">
+      在线查看简历
+    </a>
+    {% else %}
+    <span class="muted">暂无可在线预览的简历</span>
+    {% endif %}
+    {% if resume_download_available %}
+    <a class="button secondary" href="{% url 'recruitment:download_resume' resume.pk %}">
+      下载简历
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="stack-layout" style="display: flex; flex-direction: column; gap: 20px;">
+  <!-- 第一行：候选人资料 与 团队标签 左右排列 -->
+  <div class="grid-two">
+    <section class="panel">
+      <h2>候选人资料</h2>
+      <dl class="detail-list">
+        <dt>姓名</dt>
+        <dd><strong>{{ membership.candidate.name|default:"-" }}</strong></dd>
+        <dt>岁数</dt>
+        <dd>{{ age|default:"-" }}</dd>
+        {% if native_place %}
+        <dt>籍贯</dt>
+        <dd>{{ native_place }}</dd>
+        {% endif %}
+        <dt>毕业院校</dt>
+        <dd>{{ school_display|default:membership.candidate.school|default:"-" }}</dd>
+        <dt>手机</dt>
+        <dd>{{ membership.candidate.phone|default:"-" }}</dd>
+        <dt>邮箱</dt>
+        <dd>{{ membership.candidate.email|default:"-" }}</dd>
+        <dt>当前公司</dt>
+        <dd>{{ membership.candidate.current_company|default:"-" }}</dd>
+        <dt>来源岗位</dt>
+        <dd>{{ membership.position.name|default:"-" }}</dd>
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>团队标签</h2>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+          {% for assignment in membership.tag_assignments.all %}
+          <form method="post" action="{% url 'talent_pool:remove_tag' membership.pk assignment.tag_id %}" style="margin: 0;">
+            {% csrf_token %}
+            <button class="status" type="submit" title="点击移除标签" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 13px;">
+              <span>{{ assignment.tag.name }}</span>
+              <span style="opacity: 0.6; font-size: 14px; line-height: 1;">×</span>
+            </button>
+          </form>
+          {% empty %}
+          <span class="muted">暂无标签</span>
+          {% endfor %}
+        </div>
+        <form method="post" action="{% url 'talent_pool:assign_tag' membership.pk %}" class="inline-form" style="display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;">
+          {% csrf_token %}
+          <select name="tag_id" style="width: 140px; max-width: 160px; min-width: 120px; flex-shrink: 1;">
+            {% for tag in all_tags %}
+            <option value="{{ tag.pk }}">{{ tag.name }}</option>
+            {% endfor %}
+          </select>
+          <button class="button secondary" type="submit" style="white-space: nowrap; flex-shrink: 0;">+ 添加标签</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <!-- 第二行：工作经历 -->
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>工作经历</h2>
+      </div>
+    </div>
+    <div class="list" style="display: flex; flex-direction: column; gap: 12px;">
+      {% for work in work_records %}
+      <div style="padding: 16px 18px; background: var(--bg-surface, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <strong style="font-size: 15px; color: var(--ink, #0f172a);">{{ work.company }}</strong>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: #2563eb; font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin: 0;">
+              {{ work.job_title }}
+            </span>
+            {% if work.department %}
+            <span class="muted" style="font-size: 13px;">{{ work.department }}</span>
+            {% endif %}
+          </div>
+          {% if work.start_date or work.end_date %}
+          <time class="muted" style="font-size: 13px; font-weight: 500;">{{ work.start_date }} — {{ work.end_date }}</time>
+          {% endif %}
+        </div>
+        {% if work.job_duty %}
+        <div class="pre-wrap" style="color: var(--muted, #475569); font-size: 13.5px; line-height: 1.65; margin-top: 8px;">{{ work.job_duty }}</div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div class="empty" style="padding: 20px; text-align: center; color: var(--muted, #64748b);">暂无工作经历记录</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- 第三行：专业技能（靠左排列） -->
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>专业技能</h2>
+      </div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; text-align: left;">
+      {% for skill in skills %}
+      <span class="skill-tag" style="background: var(--bg-surface, #f1f5f9); color: var(--ink, #334155); border: 1px solid var(--border, #e2e8f0); padding: 5px 12px; font-size: 13px; border-radius: 6px; font-weight: 500; margin: 0; display: inline-flex; align-items: center;">
+        {{ skill }}
+      </span>
+      {% empty %}
+      <span class="muted">未提取到具体专业技能</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- 第四行：人才库备注 -->
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>人才库备注</h2>
+        <p class="muted">统一记录候选人的跟进进展、能力评价及重点关注项，修改后点击保存即可生效。</p>
+      </div>
+    </div>
+    <form method="post" action="{% url 'talent_pool:add_note' membership.pk %}" class="stack-form">
+      {% csrf_token %}
+      <label style="margin-bottom: 0;">
+        <textarea name="content" rows="4" placeholder="在此直接输入或修改该人才的备注信息（例如：初试表现优异，技术功底扎实，期望薪资25K，可随时入职...）" style="width: 100%; min-height: 110px; font-size: 14px; line-height: 1.7; resize: vertical;">{{ unified_remark }}</textarea>
+      </label>
+      <div class="actions" style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+        <button class="button primary" type="submit">保存备注</button>
+        {% if latest_note_time %}
+          <small class="muted">最近更新：{{ latest_note_time|date:"Y-m-d H:i" }}{% if latest_note_author %}（{{ latest_note_author }}）{% endif %}</small>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

@@ -7,7 +7,10 @@
     <h1>{{ report.item.application.candidate }} · AI 分析报告</h1>
     <p>{{ report.item.application.position }} · 规则 V{{ report.item.rule_version.version }} · {{ report.model_version }}</p>
   </div>
-  <a class="button secondary" href="{% url 'analysis:report_pdf' report.pk %}">导出 PDF</a>
+  <div class="actions">
+    <button class="button primary" type="button" onclick="window.print()">打印 / 保存为 PDF</button>
+    <a class="button secondary" href="{% url 'analysis:report_pdf' report.pk %}">下载 PDF</a>
+  </div>
 </div>
 
 <section class="report-summary">

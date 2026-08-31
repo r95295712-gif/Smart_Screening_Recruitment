@@ -1,6 +1,10 @@
 from django.urls import path
 
-from .file_views import download_resume, preview_resume
+from .file_views import (
+    download_resume,
+    preview_resume,
+    refresh_resume_preview_action,
+)
 from .views import (
     bulk_delete_applications,
     cancel_position_initialization,
@@ -32,6 +36,7 @@ from .views_configuration import (
     configuration_ai_diff,
     configuration_confirm_jd,
     configuration_confirm_match,
+    configuration_delete_jd,
     configuration_detail,
     configuration_list,
     configuration_remove_reviewer,
@@ -71,6 +76,11 @@ urlpatterns = [
         name="configuration_confirm_jd",
     ),
     path(
+        "position-configuration/<int:pk>/jd-decisions/<int:decision_pk>/delete/",
+        configuration_delete_jd,
+        name="configuration_delete_jd",
+    ),
+    path(
         "position-configuration/<int:pk>/ai-diff/",
         configuration_ai_diff,
         name="configuration_ai_diff",
@@ -98,6 +108,11 @@ urlpatterns = [
     path("applications/<int:pk>/pull-resume/", pull_resume, name="pull_resume"),
     path("resumes/<uuid:pk>/download/", download_resume, name="download_resume"),
     path("resumes/<uuid:pk>/preview/", preview_resume, name="preview_resume"),
+    path(
+        "resumes/<uuid:pk>/refresh/",
+        refresh_resume_preview_action,
+        name="refresh_resume_preview",
+    ),
     path("notifications/", notifications, name="notifications"),
     path("notifications/clear/", clear_notifications, name="clear_notifications"),
     path(

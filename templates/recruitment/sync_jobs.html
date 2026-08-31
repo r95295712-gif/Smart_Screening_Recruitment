@@ -70,9 +70,9 @@
                 <span class="badge-sync type-{{ job.sync_type }}">{{ job.get_sync_type_display }}</span>
                 <span class="sync-trigger-meta">
                   {% if job.requested_by %}
-                    👤 {{ job.requested_by.get_full_name|default:job.requested_by.username }}
+                    {{ job.requested_by.get_full_name|default:job.requested_by.username }}
                   {% else %}
-                    ⏱️ 定时调度
+                    定时调度
                   {% endif %}
                 </span>
               </div>

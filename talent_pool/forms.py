@@ -53,3 +53,40 @@ class RecommendationForm(forms.Form):
         required=False,
         label="我已知晓简历资料可能过期并仍要推荐",
     )
+
+
+class TalentInterviewFilterForm(forms.Form):
+    q = forms.CharField(required=False, label="关键词")
+    position = forms.CharField(required=False, label="岗位")
+    result = forms.CharField(required=False, label="面试结果")
+    interviewer = forms.CharField(required=False, label="面试官")
+    channel = forms.CharField(required=False, label="渠道")
+    date_from = forms.DateField(
+        required=False, widget=forms.DateInput(attrs={"type": "date"}), label="开始日期"
+    )
+    date_to = forms.DateField(
+        required=False, widget=forms.DateInput(attrs={"type": "date"}), label="结束日期"
+    )
+
+
+class TalentInterviewForm(forms.ModelForm):
+    class Meta:
+        from .models import TalentInterview
+
+        model = TalentInterview
+        fields = [
+            "interview_date",
+            "interview_time",
+            "position_name",
+            "first_interviewer",
+            "second_interviewer",
+            "result",
+            "notes",
+            "channel",
+        ]
+        widgets = {
+            "interview_date": forms.DateInput(attrs={"type": "date"}),
+            "interview_time": forms.TextInput(attrs={"placeholder": "09:30"}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
+

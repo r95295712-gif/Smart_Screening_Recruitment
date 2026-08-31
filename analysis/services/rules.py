@@ -130,7 +130,6 @@ def _generate_rule_result(position, effective_jd, gateway=None):
     prompt = json.dumps(
         {
             "position": position.name,
-            "position_type": position.position_type,
             "source_jd": effective_jd,
             "constraints": [
                 "敏感条件只能按 JD 明确表述整理，不得扩展或推测。",
@@ -242,3 +241,52 @@ def jd_diff(current, source):
             lineterm="",
         )
     )
+
+
+@transaction.atomic
+def delete_rule_version(rule, actor, force=False):
+    pos = rule.position
+    version_num = rule.version
+    item_count = rule.analysis_items.count()
+    is_published = rule.status == PositionRuleVersion.Status.PUBLISHED
+
+    if is_published:
+        raise ValueError("当前正在生效（已发布）的岗位规则不可直接删除。如需删除，请先发布其他规则版本。")
+
+    is_admin = bool(
+        getattr(actor, "is_staff", False) or getattr(actor, "is_superuser", False)
+    )
+
+    if item_count > 0 and not is_admin:
+        raise ValueError(
+            f"该规则版本已有 {item_count} 条候选人评估记录关联，为保证招聘数据溯源，无法直接删除。如需清理，请联系系统管理员。"
+        )
+
+    if item_count > 0 and is_admin and not force:
+        raise ValueError(
+            f"REQUIRED_FORCE_CONFIRM:该规则版本已有 {item_count} 条候选人评估报告关联！强行删除将解除历史报告与该规则版本的绑定。确定强行删除吗？"
+        )
+
+    if is_admin and force and item_count > 0:
+        rule.analysis_items.all().update(rule_version=None)
+        record_audit(
+            actor,
+            "position_rule.force_delete",
+            pos,
+            {
+                "position_id": pos.pk,
+                "version": version_num,
+                "item_count": item_count,
+            },
+        )
+    else:
+        record_audit(
+            actor,
+            "position_rule.delete",
+            pos,
+            {"position_id": pos.pk, "version": version_num},
+        )
+
+    rule.delete()
+    return True
+

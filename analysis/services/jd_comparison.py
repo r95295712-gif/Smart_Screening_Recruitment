@@ -1,11 +1,50 @@
 import json
+import re
 from decimal import Decimal
 
 from analysis.integrations.model import ModelGateway
 from analysis.models import ModelUsage, ModelVersion
 
 
-JD_DIFF_SYSTEM_PROMPT = """你是招聘岗位说明对比助手。请只总结两份岗位说明在职责、硬性要求、经验、学历、技能和加分项上的差异，不替用户决定采用哪一份。输出 JSON，字段为 summary。"""
+JD_DIFF_SYSTEM_PROMPT = """你是专业的招聘岗位说明对比专家。请客观对比给定的【北森岗位说明】与【参考资料岗位说明】，结构化总结两者的关键差异。
+输出 JSON 对象，包含 summary 字段。
+summary 请使用清晰、易读的中文纯文本格式（严禁使用任何 Markdown 符号如 ###、##、#、**、*、`、- 等），按照以下结构分段输出（若某项无显著差异，请简明注明“无明显差异”）：
+
+【核心职责差异】
+1. 对比双方在日常职责、业务重心及管理职责上的具体差异。
+
+【硬性要求差异】
+1. 对比学历、专业、最低工作年限等硬性门槛要求的差异。
+
+【专业技能与经验差异】
+1. 对比技术栈、专业工具、项目经验及业务知识要求的差异。
+
+【加分项与优先条件】
+1. 对比优先考虑条件、加分技能及附加要求的差异。
+
+【人工确认要点建议】
+1. 提示 HR / 业务负责人在确认最终 JD 时需要特别注意核对的要点。
+
+请保持条理清晰、文字通顺，适合直接纯文本阅读。"""
+
+
+def clean_diff_summary_text(text):
+    if not text:
+        return ""
+    cleaned = text
+    # Convert markdown headers to 【...】
+    cleaned = re.sub(r"^[#\s]*###?\s*(?:[0-9]+[.\s、]*)?([^\n]+)", r"【\1】", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^[#\s]*##\s*(?:[0-9]+[.\s、]*)?([^\n]+)", r"【\1】", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^[#\s]*#\s*(?:[0-9]+[.\s、]*)?([^\n]+)", r"【\1】", cleaned, flags=re.MULTILINE)
+    # Remove bold / italic / code markers
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    # Normalize bullet points to clean dash or numbering
+    cleaned = re.sub(r"^\s*[-*+]\s+", "• ", cleaned, flags=re.MULTILINE)
+    # Clean redundant empty lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def create_ai_diff_summary(position, document_position, actor, gateway=None):
@@ -23,7 +62,8 @@ def create_ai_diff_summary(position, document_position, actor, gateway=None):
     )
     try:
         result = (gateway or ModelGateway()).analyze(JD_DIFF_SYSTEM_PROMPT, prompt)
-        summary = str(result["payload"].get("summary", "")).strip()
+        raw_summary = str(result["payload"].get("summary", "")).strip()
+        summary = clean_diff_summary_text(raw_summary)
         if not summary:
             raise ValueError("模型未返回可用的差异摘要。")
         input_tokens = int(result.get("input_tokens", 0))

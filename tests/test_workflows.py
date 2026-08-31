@@ -87,6 +87,8 @@ from reviews.services import (
 from reviews.tasks import send_review_batch
 from talent_pool.models import (
     CandidateNote,
+    InterviewResultOption,
+    TalentInterview,
     TalentMembership,
     TalentTag,
     TalentTagAssignment,
@@ -1968,9 +1970,22 @@ class TalentPoolTests(WorkflowFixtureMixin, TestCase):
         self.assertNotContains(response, "在线简历内容")
         self.assertNotContains(response, "八年后端研发经验")
         self.assertContains(response, "备注")
-        self.assertContains(response, "修改备注")
+        self.assertContains(response, "保存备注")
+        self.assertContains(response, "候选人有招聘系统项目经验。")
         self.assertNotContains(response, "Scope:")
         self.assertNotContains(response, "Content:")
+
+        # Test editing the unified note directly
+        edit_res = client.post(
+            reverse("talent_pool:add_note", args=[membership.pk]),
+            {"content": "更新后的统一备注内容"},
+        )
+        self.assertRedirects(edit_res, reverse("talent_pool:detail", args=[membership.pk]))
+        self.assertEqual(CandidateNote.objects.filter(candidate=application.candidate).count(), 1)
+        self.assertEqual(
+            CandidateNote.objects.filter(candidate=application.candidate).first().content,
+            "更新后的统一备注内容",
+        )
 
     def test_talent_detail_uses_latest_valid_resume_with_preview_and_download(self):
         application = self.create_application()
@@ -3274,3 +3289,210 @@ class PageSmokeTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.headers["Content-Disposition"])
         response.close()
+
+    def test_preview_missing_physical_file_renders_friendly_page(self):
+        application = self.create_application(applicant_id="A-MISSING-FILE")
+        resume = application.current_resume
+        # Point to a non-existent file name in storage
+        resume.standard_pdf.name = "resumes/non_existent_file.pdf"
+        resume.save(update_fields=["standard_pdf"])
+
+        client = self.authenticated_client(self.hr)
+        url = reverse("recruitment:preview_resume", args=[resume.pk])
+        response = client.get(url)
+        # Should render 404 with friendly explanation and retry button, never unhandled 500
+        self.assertEqual(response.status_code, 404)
+        self.assertContains(response, "简历在线预览暂不可用", status_code=404)
+        self.assertContains(response, "重新拉取简历", status_code=404)
+
+    def test_public_review_has_top_return_button(self):
+        model, _ = ModelVersion.objects.get_or_create(
+            name="gpt-5.6-sol", defaults={"provider": "custom", "is_active": True}
+        )
+        prompt, _ = PromptVersion.objects.get_or_create(
+            version=1, defaults={"content": "{}", "is_active": True}
+        )
+        application = self.create_application(applicant_id="A-REV-TOP")
+        analysis_item = self.mark_analyzed(application)
+        AnalysisReport.objects.create(
+            item=analysis_item,
+            score=90,
+            rating=AnalysisReport.Rating.PRIORITY,
+            model_version=model,
+            prompt_version=prompt,
+        )
+        reviewer = Reviewer.objects.create(name="负责人A", email="rev_a@example.com")
+        batch = create_review_batch(
+            application.position,
+            [application.pk],
+            reviewer,
+            self.hr,
+            72,
+        )
+        item = batch.items.get()
+        token = token_for_batch(batch)
+        url = reverse("reviews:public_item", args=[batch.public_id, token, item.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "返回审核列表")
+        self.assertContains(response, "data-review-list-return")
+
+    def test_report_detail_has_print_and_export_buttons(self):
+        model, _ = ModelVersion.objects.get_or_create(
+            name="gpt-5.6-sol", defaults={"provider": "custom", "is_active": True}
+        )
+        prompt, _ = PromptVersion.objects.get_or_create(
+            version=1, defaults={"content": "{}", "is_active": True}
+        )
+        application = self.create_application(applicant_id="A-REPORT-PRINT")
+        item = self.mark_analyzed(application)
+        report = AnalysisReport.objects.create(
+            item=item,
+            score=90,
+            rating=AnalysisReport.Rating.PRIORITY,
+            model_version=model,
+            prompt_version=prompt,
+        )
+        client = self.authenticated_client(self.hr)
+        url = reverse("analysis:report_detail", args=[report.pk])
+        response = client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "打印 / 保存为 PDF")
+        self.assertContains(response, "下载 PDF")
+
+    def test_talent_detail_stacked_layout_and_fields(self):
+        candidate = Candidate.objects.create(
+            applicant_id="A-TALENT-DETAIL-TEST",
+            name="李阳",
+            phone="19859813919",
+            email="liyang@example.com",
+            current_company="福州鼎盛星航贸易有限公司",
+            school="福建商学院",
+            skills_text="Excel精通, Fastmoss熟练, GMV调控",
+            profile={"Age": 26, "NativePlace": "福建福州"},
+            resume_modules={
+                "ApplicantEducation": {
+                    "moduleInfo": [
+                        [
+                            {"name": "OgSchoolName", "value": "福建商学院", "text": "福建商学院"},
+                            {"name": "EducationLevel", "value": "本科", "text": "本科"},
+                            {"name": "MajorName", "value": "电子商务", "text": "电子商务"},
+                        ]
+                    ]
+                },
+                "ApplicantWorkExperience": {
+                    "moduleInfo": [
+                        [
+                            {"name": "CompanyName", "value": "福州鼎盛星航贸易有限公司", "text": "福州鼎盛星航贸易有限公司"},
+                            {"name": "JobTitle", "value": "运营主管", "text": "运营主管"},
+                            {"name": "StartDate", "value": "2023-06", "text": "2023-06"},
+                            {"name": "EndDate", "value": "至今", "text": "至今"},
+                            {"name": "JobDuty", "value": "负责TikTok店铺整体GMV运营", "text": "负责TikTok店铺整体GMV运营"},
+                        ]
+                    ]
+                },
+            },
+        )
+        membership = add_candidate(candidate, self.hr)
+        client = self.authenticated_client(self.hr)
+        url = reverse("talent_pool:detail", args=[membership.pk])
+        response = client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "李阳")
+        self.assertContains(response, "26 岁")
+        self.assertContains(response, "福建福州")
+        self.assertContains(response, "福建商学院")
+        self.assertContains(response, "工作经历")
+        self.assertContains(response, "福州鼎盛星航贸易有限公司")
+        self.assertContains(response, "运营主管")
+        self.assertContains(response, "专业技能")
+        self.assertContains(response, "Excel精通")
+        self.assertContains(response, "团队标签")
+        self.assertContains(response, "人才库备注")
+        # Ensure separate education section is omitted as requested
+        self.assertNotContains(response, "<h2>🎓 教育经历</h2>")
+        self.assertNotContains(response, "<h2>教育经历</h2>")
+
+    def test_talent_interview_workflow_and_api(self):
+        from datetime import date
+
+        position = Position.objects.create(name="运营助理", position_type="全职")
+        candidate = Candidate.objects.create(
+            applicant_id="A-INTV-TEST-1",
+            name="魏辛真",
+            phone="13900000000",
+            email="wei@example.com",
+        )
+        Application.objects.create(
+            candidate=candidate,
+            position=position,
+            source_type=Application.SourceType.TALENT,
+            source_channel="BOSS直聘",
+        )
+        # Adding to talent pool auto-creates TalentInterview
+        membership = add_candidate(candidate, self.hr, position=position)
+        interview = TalentInterview.objects.get(candidate=candidate)
+        self.assertEqual(interview.position_name, "运营助理")
+        self.assertEqual(interview.channel, "BOSS直聘")
+        self.assertEqual(interview.result, "未面试")
+
+        # Test date and weekday
+        interview.interview_date = date(2026, 8, 20)  # Thursday
+        interview.interview_time = "09:30"
+        interview.first_interviewer = "发添"
+        interview.result = "录用"
+        interview.notes = "初试通过，表现优秀"
+        interview.save()
+        self.assertIn("2026年8月20日 星期四", interview.formatted_date_with_weekday)
+        self.assertEqual(interview.result_color_type, "success")
+
+        client = self.authenticated_client(self.hr)
+
+        # 1. Test talent_list buttons
+        list_resp = client.get(reverse("talent_pool:list"))
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertContains(list_resp, "面试信息")
+        self.assertContains(list_resp, "标签管理")
+
+        # 2. Test interview_list view
+        intv_resp = client.get(reverse("talent_pool:interview_list"))
+        self.assertEqual(intv_resp.status_code, 200)
+        self.assertContains(intv_resp, "魏辛真")
+        self.assertContains(intv_resp, "2026年8月20日 星期四")
+        self.assertContains(intv_resp, "09:30")
+        self.assertContains(intv_resp, "运营助理")
+        self.assertContains(intv_resp, "发添")
+        self.assertContains(intv_resp, "录用")
+        self.assertContains(intv_resp, "BOSS直聘")
+
+        # 3. Test interview_update_api
+        update_url = reverse("talent_pool:interview_update", args=[interview.pk])
+        update_resp = client.post(
+            update_url,
+            data=json.dumps(
+                {
+                    "first_interviewer": "张倩",
+                    "second_interviewer": "李总",
+                    "result": "待入职",  # Custom result option
+                    "notes": "已发放Offer",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        json_data = update_resp.json()
+        self.assertTrue(json_data["ok"])
+        self.assertEqual(json_data["interview"]["first_interviewer"], "张倩")
+        self.assertEqual(json_data["interview"]["second_interviewer"], "李总")
+        self.assertEqual(json_data["interview"]["result"], "待入职")
+
+        # Check that custom result option is dynamically persisted
+        self.assertTrue(InterviewResultOption.objects.filter(name="待入职").exists())
+
+        # 4. Test delete
+        del_url = reverse("talent_pool:interview_delete", args=[interview.pk])
+        del_resp = client.post(del_url)
+        self.assertEqual(del_resp.status_code, 302)
+        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk).exists())
+
+

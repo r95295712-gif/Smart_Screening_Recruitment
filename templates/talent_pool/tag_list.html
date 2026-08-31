@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}团队标签管理{% endblock %}
+{% block title %}标签管理{% endblock %}
 {% block back_url %}{% url 'talent_pool:list' %}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1>团队标签管理</h1>
+    <h1>标签管理</h1>
   </div>
   <div class="actions">
     <a class="button secondary" href="{% url 'talent_pool:list' %}">返回人才库</a>
@@ -16,20 +16,20 @@
   <div class="panel-header">
     <h2>创建新标签</h2>
   </div>
-  <form method="post" action="{% url 'talent_pool:create_tag' %}" class="actions">
+  <form method="post" action="{% url 'talent_pool:create_tag' %}" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <label for="id_tag_name" class="visually-hidden">标签名称</label>
-    <input type="text" name="name" id="id_tag_name" placeholder="请输入新标签名称..." required maxlength="100" style="max-width: 320px;">
+    <input type="text" name="name" id="id_tag_name" placeholder="请输入新标签名称..." required maxlength="100" style="width: 280px; margin: 0;">
     <button class="button primary" type="submit">创建标签</button>
   </form>
 </section>
 
 <section class="panel">
-  <div class="panel-header">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
     <h2>标签列表</h2>
-    <form method="get" class="actions">
-      <input type="text" name="q" value="{{ request.GET.q|default:'' }}" placeholder="搜索标签名称..." style="max-width: 220px;">
+    <form method="get" style="display: flex; align-items: center; gap: 8px; margin: 0;">
+      <input type="text" name="q" value="{{ request.GET.q|default:'' }}" placeholder="搜索标签名称..." style="width: 220px; margin: 0;">
       <button class="button secondary" type="submit">搜索</button>
       {% if request.GET.q %}
         <a class="link-button" href="{% url 'talent_pool:tag_list' %}">清除搜索</a>

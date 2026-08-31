@@ -51,7 +51,7 @@ class PositionRuleVersion(models.Model):
     position = models.ForeignKey(Position, on_delete=models.CASCADE, related_name="rule_versions")
     jd_decision = models.ForeignKey(
         "recruitment.PositionJdDecision",
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="rule_versions",
@@ -95,16 +95,22 @@ class PositionRuleVersion(models.Model):
     def publish(self, actor):
         configuration = getattr(self.position, "configuration", None)
         if configuration:
-            current_decision = self.position.jd_decisions.filter(is_current=True).first()
-            if not current_decision:
-                raise ValidationError("请先确认岗位说明，再发布规则。")
-            if self.jd_decision_id != current_decision.pk:
-                raise ValidationError("该规则不是基于当前确认的岗位说明，请重新生成草稿。")
-            if (
-                self.evaluation_jd.strip() != current_decision.confirmed_jd.strip()
-                or self.source_jd_snapshot.strip() != current_decision.confirmed_jd.strip()
-            ):
-                raise ValidationError("规则所用岗位说明与当前确认内容不一致，请重新生成草稿。")
+            if self.jd_decision:
+                if not self.jd_decision.is_current:
+                    self.position.jd_decisions.filter(is_current=True).update(is_current=False)
+                    self.jd_decision.is_current = True
+                    self.jd_decision.save(update_fields=["is_current"])
+                    self.position.evaluation_jd = self.jd_decision.confirmed_jd
+                    self.position.save(update_fields=["evaluation_jd"])
+            else:
+                current_decision = self.position.jd_decisions.filter(is_current=True).first()
+                if not current_decision:
+                    raise ValidationError("请先确认岗位说明，再发布规则。")
+                if (
+                    self.evaluation_jd.strip() != current_decision.confirmed_jd.strip()
+                    or self.source_jd_snapshot.strip() != current_decision.confirmed_jd.strip()
+                ):
+                    raise ValidationError("规则所用岗位说明与当前确认内容不一致，请重新生成草稿。")
         PositionRuleVersion.objects.filter(
             position=self.position, status=self.Status.PUBLISHED
         ).exclude(pk=self.pk).update(status=self.Status.ARCHIVED)
@@ -247,7 +253,11 @@ class AnalysisItem(models.Model):
         ResumeVersion, on_delete=models.PROTECT, related_name="analysis_items"
     )
     rule_version = models.ForeignKey(
-        PositionRuleVersion, on_delete=models.PROTECT, related_name="analysis_items"
+        PositionRuleVersion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="analysis_items",
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
     retry_count = models.PositiveSmallIntegerField(default=0)
