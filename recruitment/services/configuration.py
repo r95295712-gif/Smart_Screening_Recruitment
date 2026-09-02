@@ -86,29 +86,54 @@ def build_merged_jd(beisen_jd, document_jd):
 
     merged_parts = []
 
-    # 1. Responsibilities
-    resp_items = []
-    seen_resp = set()
-    for item in sec_b["responsibilities"] + sec_d["responsibilities"]:
-        cleaned = clean_item(item)
-        if cleaned and cleaned not in seen_resp:
-            seen_resp.add(cleaned)
-            resp_items.append(cleaned)
+    def merge_item_list(raw_items, is_requirement=False):
+        items = []
+        for r in raw_items:
+            c = clean_item(r).rstrip("；;。.")
+            if c:
+                items.append(c)
 
+        result = []
+        for item in items:
+            handled = False
+            for idx, existing in enumerate(result):
+                if item == existing or item in existing:
+                    handled = True
+                    break
+                if existing in item:
+                    result[idx] = item
+                    handled = True
+                    break
+                if is_requirement:
+                    # Check working years conflict: preserve higher standard
+                    m1 = re.search(r"工作(?:经验)?(?:满)?\s*(\d+)\s*年以上", existing)
+                    m2 = re.search(r"工作(?:经验)?(?:满)?\s*(\d+)\s*年以上", item)
+                    if m1 and m2:
+                        y1 = int(m1.group(1))
+                        y2 = int(m2.group(1))
+                        if y2 > y1:
+                            result[idx] = item
+                        handled = True
+                        break
+            if not handled:
+                result.append(item)
+        return result
+
+    # 1. Responsibilities
+    resp_items = merge_item_list(
+        sec_b["responsibilities"] + sec_d["responsibilities"],
+        is_requirement=False,
+    )
     if resp_items:
         merged_parts.append("岗位职责：")
         for i, item in enumerate(resp_items, 1):
             merged_parts.append(f"{i}. {item}")
 
     # 2. Requirements
-    req_items = []
-    seen_req = set()
-    for item in sec_b["requirements"] + sec_d["requirements"]:
-        cleaned = clean_item(item)
-        if cleaned and cleaned not in seen_req:
-            seen_req.add(cleaned)
-            req_items.append(cleaned)
-
+    req_items = merge_item_list(
+        sec_b["requirements"] + sec_d["requirements"],
+        is_requirement=True,
+    )
     if req_items:
         if merged_parts:
             merged_parts.append("")
@@ -117,14 +142,10 @@ def build_merged_jd(beisen_jd, document_jd):
             merged_parts.append(f"{i}. {item}")
 
     # 3. Others
-    other_items = []
-    seen_other = set()
-    for item in sec_b["others"] + sec_d["others"]:
-        cleaned = clean_item(item)
-        if cleaned and cleaned not in seen_other:
-            seen_other.add(cleaned)
-            other_items.append(cleaned)
-
+    other_items = merge_item_list(
+        sec_b["others"] + sec_d["others"],
+        is_requirement=False,
+    )
     if other_items:
         if merged_parts:
             merged_parts.append("")

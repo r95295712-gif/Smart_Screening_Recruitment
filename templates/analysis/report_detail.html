@@ -8,8 +8,7 @@
     <p>{{ report.item.application.position }} · 规则 V{{ report.item.rule_version.version }} · {{ report.model_version }}</p>
   </div>
   <div class="actions">
-    <button class="button primary" type="button" onclick="window.print()">打印 / 保存为 PDF</button>
-    <a class="button secondary" href="{% url 'analysis:report_pdf' report.pk %}">下载 PDF</a>
+    <a class="button primary" href="{% url 'analysis:report_pdf' report.pk %}">下载 PDF</a>
   </div>
 </div>
 

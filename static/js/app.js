@@ -141,6 +141,68 @@ function scheduleRegionRefresh(region) {
   }, delay);
 }
 
+async function executeSilentRefresh(region) {
+  if (!region?.dataset.refreshRegion) return;
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+  const containerScroll = Array.from(
+    region.querySelectorAll(".table-scroll")
+  ).map((container) => ({
+    left: container.scrollLeft,
+    top: container.scrollTop,
+  }));
+  try {
+    const response = await fetch(window.location.href, {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+    if (!response.ok) throw new Error("refresh failed");
+    const nextDocument = new DOMParser().parseFromString(
+      await response.text(),
+      "text/html"
+    );
+    const selector = `[data-refresh-region="${CSS.escape(
+      region.dataset.refreshRegion
+    )}"]`;
+    const nextRegion = nextDocument.querySelector(selector);
+    if (!nextRegion) return;
+
+    region.replaceWith(nextRegion);
+    enhanceTables(nextRegion);
+    enhanceRowSelection(nextRegion);
+    nextRegion.querySelectorAll(".table-scroll").forEach((container, index) => {
+      const saved = containerScroll[index];
+      if (!saved) return;
+      container.scrollLeft = saved.left;
+      container.scrollTop = saved.top;
+    });
+    window.scrollTo(scrollX, scrollY);
+    if (nextRegion.dataset.autoRefresh) {
+      scheduleRegionRefresh(nextRegion);
+    }
+  } catch (error) {
+    console.error("Silent refresh failed:", error);
+  }
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-silent-refresh]");
+  if (!btn) return;
+  event.preventDefault();
+  const targetRegionName = btn.dataset.silentRefresh;
+  const region = document.querySelector(
+    `[data-refresh-region="${CSS.escape(targetRegionName)}"]`
+  );
+  if (!region) return;
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = "刷新中...";
+  executeSilentRefresh(region).finally(() => {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  });
+});
+
 function createOperationId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
@@ -588,10 +650,13 @@ function enhanceJdDecisionDynamicAutofill(root = document) {
     const select = form.querySelector('select[name="decision_type"]');
     const textarea = form.querySelector('textarea[name="confirmed_jd"]');
     const noticeNode = form.querySelector("#jd-draft-notice, .jd-draft-notice");
+    const loadingOverlay = form.querySelector("#jd-textarea-loading-overlay, .jd-textarea-loading");
+    const aiMergeUrl = form.dataset.aiMergeUrl;
     if (!select || !textarea) return;
 
     let beisenJd = "";
     let mergedJd = "";
+    let aiMergedCache = "";
     try {
       const beisenScript = document.getElementById("beisen-jd-data");
       if (beisenScript) beisenJd = JSON.parse(beisenScript.textContent || '""');
@@ -602,23 +667,115 @@ function enhanceJdDecisionDynamicAutofill(root = document) {
     } catch (_) {}
 
     let manualDraft = textarea.value;
+    let currentMergeAbortController = null;
+
+    const stopLoading = () => {
+      if (loadingOverlay) {
+        loadingOverlay.hidden = true;
+        loadingOverlay.style.display = "none";
+        loadingOverlay.classList.remove("is-active");
+      }
+      textarea.removeAttribute("readonly");
+    };
+
+    // Ensure loading overlay is strictly hidden upon initialization
+    stopLoading();
 
     const handleTypeChange = () => {
       const mode = select.value;
+
+      if (mode !== "merged" && currentMergeAbortController) {
+        currentMergeAbortController.abort();
+        currentMergeAbortController = null;
+        stopLoading();
+      }
+
       if (mode === "beisen") {
+        stopLoading();
         textarea.value = beisenJd;
         if (noticeNode) {
           noticeNode.textContent = "已自动载入北森原始岗位说明。";
           noticeNode.hidden = false;
         }
       } else if (mode === "merged") {
-        textarea.value = mergedJd || beisenJd;
+        if (loadingOverlay) {
+          loadingOverlay.hidden = false;
+          loadingOverlay.style.display = "flex";
+          loadingOverlay.classList.add("is-active");
+        }
+        textarea.setAttribute("readonly", "true");
         if (noticeNode) {
-          noticeNode.textContent = "已自动生成并载入合并草稿，您可在下方直接查看和调整，确认后点击下方按钮。";
+          noticeNode.textContent = "正在通过 AI 智能融合岗位说明，请稍候...";
           noticeNode.hidden = false;
         }
+
+        if (aiMergeUrl) {
+          const csrfInput =
+            form.querySelector('input[name="csrfmiddlewaretoken"]') ||
+            document.querySelector('input[name="csrfmiddlewaretoken"]');
+          const csrfToken = csrfInput ? csrfInput.value : "";
+          currentMergeAbortController = new AbortController();
+
+          fetch(aiMergeUrl, {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": csrfToken,
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            signal: currentMergeAbortController.signal,
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (select.value !== "merged") return;
+              stopLoading();
+              if (data && data.ok && data.merged_jd) {
+                textarea.value = data.merged_jd;
+                aiMergedCache = data.merged_jd;
+                if (noticeNode) {
+                  noticeNode.textContent =
+                    data.source === "ai"
+                      ? "已通过 AI 完成智能融合（已消除重复与冲突并保留高标准），您可在下方直接查看和调整，确认后点击下方按钮。"
+                      : (data.warning ||
+                        "已自动生成合并草稿，您可在下方直接查看和调整，确认后点击下方按钮。");
+                  noticeNode.hidden = false;
+                }
+              } else {
+                textarea.value = mergedJd || beisenJd;
+                if (noticeNode) {
+                  noticeNode.textContent =
+                    "已载入合并草稿，您可在下方直接查看和调整，确认后点击下方按钮。";
+                  noticeNode.hidden = false;
+                }
+              }
+            })
+            .catch((err) => {
+              if (err.name === "AbortError") return;
+              if (select.value !== "merged") return;
+              stopLoading();
+              textarea.value = mergedJd || beisenJd;
+              if (noticeNode) {
+                noticeNode.textContent =
+                  "智能融合服务不可用，已为您载入基础合并草稿，您可在下方直接查看和调整。";
+                noticeNode.hidden = false;
+              }
+            });
+        } else {
+          stopLoading();
+          textarea.value = mergedJd || beisenJd;
+          if (noticeNode) {
+            noticeNode.textContent =
+              "已自动生成并载入合并草稿，您可在下方直接查看和调整，确认后点击下方按钮。";
+            noticeNode.hidden = false;
+          }
+        }
       } else if (mode === "manual") {
-        if (manualDraft && manualDraft !== beisenJd && manualDraft !== mergedJd) {
+        stopLoading();
+        if (
+          manualDraft &&
+          manualDraft !== beisenJd &&
+          manualDraft !== mergedJd &&
+          manualDraft !== aiMergedCache
+        ) {
           textarea.value = manualDraft;
         }
         if (noticeNode) {

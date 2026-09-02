@@ -14,6 +14,11 @@ from .services.common import record_audit
 from .tasks import refresh_candidate_resume_preview
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 @login_required
 def download_resume(request, pk):
     resume = get_object_or_404(
@@ -34,31 +39,49 @@ def download_resume(request, pk):
             },
             status=404,
         )
-    try:
-        opened_file = resume.source_file.open("rb")
-        return FileResponse(
-            opened_file,
-            as_attachment=True,
-            filename=resume_display_name(
+    opened_file = None
+    for attempt in range(2):
+        try:
+            opened_file = resume.source_file.open("rb")
+            break
+        except Exception as exc:
+            if attempt == 0:
+                logger.info(
+                    "Retrying resume source file open (pk=%s, candidate=%s): %s",
+                    resume.pk,
+                    resume.candidate,
+                    exc,
+                )
+                continue
+            logger.warning(
+                "Resume source file failed to open (pk=%s, candidate=%s): %s",
+                resume.pk,
                 resume.candidate,
-                resume_position(resume),
-                resume_source_suffix(resume),
-            ),
-        )
-    except (FileNotFoundError, OSError, ValueError):
-        return render(
-            request,
-            "recruitment/file_unavailable.html",
-            {
-                "candidate": resume.candidate,
-                "candidate_name": resume.candidate.name or str(resume.candidate),
-                "resume": resume,
-                "reason": "简历源文件在服务器存储中未找到，可能存储正在同步或文件已被移除。",
-                "refresh_available": True,
-                "download_available": False,
-            },
-            status=404,
-        )
+                exc,
+            )
+            return render(
+                request,
+                "recruitment/file_unavailable.html",
+                {
+                    "candidate": resume.candidate,
+                    "candidate_name": resume.candidate.name or str(resume.candidate),
+                    "resume": resume,
+                    "reason": "简历源文件在服务器存储中未找到，可能存储正在同步或文件已被移除。",
+                    "refresh_available": True,
+                    "download_available": False,
+                },
+                status=404,
+            )
+
+    return FileResponse(
+        opened_file,
+        as_attachment=True,
+        filename=resume_display_name(
+            resume.candidate,
+            resume_position(resume),
+            resume_source_suffix(resume),
+        ),
+    )
 
 
 @login_required
@@ -98,31 +121,49 @@ def preview_resume(request, pk):
             },
         )
 
-    try:
-        opened_file = file_field.open("rb")
-        return FileResponse(
-            opened_file,
-            content_type="application/pdf",
-            as_attachment=False,
-            filename=resume_display_name(
+    opened_file = None
+    for attempt in range(2):
+        try:
+            opened_file = file_field.open("rb")
+            break
+        except Exception as exc:
+            if attempt == 0:
+                logger.info(
+                    "Retrying resume preview file open (pk=%s, candidate=%s): %s",
+                    resume.pk,
+                    resume.candidate,
+                    exc,
+                )
+                continue
+            logger.warning(
+                "Resume preview file failed to open (pk=%s, candidate=%s): %s",
+                resume.pk,
                 resume.candidate,
-                resume_position(resume),
-            ),
-        )
-    except (FileNotFoundError, OSError, ValueError):
-        return render(
-            request,
-            "recruitment/file_unavailable.html",
-            {
-                "candidate": resume.candidate,
-                "candidate_name": resume.candidate.name or str(resume.candidate),
-                "resume": resume,
-                "reason": "简历预览文件在服务器存储中暂未找到或损坏，您可以尝试重新拉取。",
-                "refresh_available": True,
-                "download_available": bool(resume.source_file),
-            },
-            status=404,
-        )
+                exc,
+            )
+            return render(
+                request,
+                "recruitment/file_unavailable.html",
+                {
+                    "candidate": resume.candidate,
+                    "candidate_name": resume.candidate.name or str(resume.candidate),
+                    "resume": resume,
+                    "reason": "简历预览文件在服务器存储中暂未找到或损坏，您可以尝试重新拉取。",
+                    "refresh_available": True,
+                    "download_available": bool(resume.source_file),
+                },
+                status=404,
+            )
+
+    return FileResponse(
+        opened_file,
+        content_type="application/pdf",
+        as_attachment=False,
+        filename=resume_display_name(
+            resume.candidate,
+            resume_position(resume),
+        ),
+    )
 
 
 @login_required

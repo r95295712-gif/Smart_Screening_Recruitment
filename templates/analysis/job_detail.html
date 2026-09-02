@@ -2,14 +2,14 @@
 {% block title %}分析任务{% endblock %}
 {% block back_url %}{% url 'recruitment:position_detail' job.position_id %}{% endblock %}
 {% block content %}
-<div data-refresh-region="analysis-job">
+<div data-refresh-region="analysis-job" {% if is_active %}data-auto-refresh="3000"{% endif %}>
   <div class="page-header">
     <div>
       <h1>分析任务 #{{ job.pk }}</h1>
       <p>{{ job.position }} · <span class="status-badge {% if job.status == 'success' %}status-success{% elif job.status == 'failed' %}status-danger{% elif job.status == 'running' or job.status == 'pending' %}status-info{% else %}status-muted{% endif %}">{{ job.get_status_display }}</span> · 已完成 {{ completed_count }}/{{ job.total_count }} · 成功 {{ job.success_count }}</p>
     </div>
     <div class="actions">
-      <a class="button secondary small" href="javascript:location.reload();">刷新进度</a>
+      <button class="button secondary small" type="button" data-silent-refresh="analysis-job">刷新进度</button>
       {% if job.status == "pending" or job.status == "running" %}
         <form method="post" action="{% url 'analysis:job_cancel' job.pk %}" style="display: inline;">
           {% csrf_token %}

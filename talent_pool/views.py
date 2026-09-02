@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.decorators import system_admin_required
-from analysis.models import AnalysisItem
+from analysis.models import AnalysisItem, AnalysisReport
 from recruitment.models import Application, Candidate, ResumeVersion
 from recruitment.services.common import record_audit
 
@@ -108,6 +108,21 @@ def talent_list(request):
 
     tags = TalentTag.objects.filter(is_active=True).select_related("created_by")
     interview_count = TalentInterview.objects.count()
+
+    candidate_ids = [m.candidate_id for m in page_obj.object_list]
+    reports = (
+        AnalysisReport.objects.filter(item__application__candidate_id__in=candidate_ids)
+        .select_related("item__application__position")
+        .order_by("-created_at")
+    )
+    report_map = {}
+    for r in reports:
+        cid = r.item.application.candidate_id
+        if cid not in report_map:
+            report_map[cid] = r
+    for m in page_obj.object_list:
+        m.latest_report = report_map.get(m.candidate_id)
+
     return render(
         request,
         "talent_pool/list.html",
@@ -222,6 +237,22 @@ def membership_detail(request, pk):
         latest_note.author.username if (latest_note and latest_note.author) else ""
     )
     details = extract_talent_profile_details(membership.candidate)
+    direct_report_ids = AnalysisReport.objects.filter(
+        item__application__candidate=membership.candidate
+    ).values_list("id", flat=True)
+    reused_report_ids = AnalysisItem.objects.filter(
+        application__candidate=membership.candidate,
+        reused_report__isnull=False,
+    ).values_list("reused_report_id", flat=True)
+    all_report_ids = set(direct_report_ids) | set(reused_report_ids)
+
+    analysis_reports = list(
+        AnalysisReport.objects.filter(id__in=all_report_ids)
+        .select_related("item__application__position", "item__rule_version")
+        .order_by("-created_at")
+    )
+    latest_report = analysis_reports[0] if analysis_reports else None
+
     return render(
         request,
         "talent_pool/detail.html",
@@ -235,6 +266,8 @@ def membership_detail(request, pk):
             "latest_note_author": latest_note_author,
             "resume_preview_available": resume_preview_available,
             "resume_download_available": bool(resume and resume.source_file),
+            "analysis_reports": analysis_reports,
+            "latest_report": latest_report,
             "age": details["age"],
             "native_place": details["native_place"],
             "school_display": details["school_display"],

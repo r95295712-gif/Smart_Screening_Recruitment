@@ -337,6 +337,7 @@ class ModelUsage(models.Model):
         RESUME_ANALYSIS = "resume_analysis", "简历分析"
         RULE_DRAFT = "rule_draft", "规则草稿"
         JD_DIFF = "jd_diff", "岗位说明差异"
+        JD_MERGE = "jd_merge", "岗位说明合并"
 
     model_version = models.ForeignKey(ModelVersion, on_delete=models.PROTECT)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)

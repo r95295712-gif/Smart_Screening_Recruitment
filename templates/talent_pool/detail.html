@@ -14,6 +14,11 @@
     </p>
   </div>
   <div class="actions">
+    {% if latest_report %}
+    <a class="button secondary" href="{% url 'analysis:report_detail' latest_report.pk %}">
+      查看 AI 分析报告
+    </a>
+    {% endif %}
     {% if resume_preview_available %}
     <a class="button primary" target="_blank" rel="noopener" href="{% url 'recruitment:preview_resume' resume.pk %}">
       在线查看简历
@@ -85,7 +90,49 @@
     </section>
   </div>
 
-  <!-- 第二行：工作经历 -->
+  <!-- AI 分析报告 -->
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>AI 分析报告</h2>
+        <p class="muted">查看该候选人历次智能初筛评估报告、匹配得分及能力模型分析。</p>
+      </div>
+    </div>
+    {% if analysis_reports %}
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      {% for rep in analysis_reports %}
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; background: var(--bg-surface, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 8px; flex-wrap: wrap; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: baseline; gap: 4px;">
+            <span style="font-size: 26px; font-weight: 800; color: {% if rep.score >= 80 %}#16a34a{% elif rep.score >= 60 %}#2563eb{% else %}#dc2626{% endif %};">{{ rep.score }}</span>
+            <span class="muted" style="font-size: 13px;">分</span>
+          </div>
+          <span class="badge" style="font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600; {% if rep.rating == 'priority' %}background: rgba(22, 163, 74, 0.12); color: #16a34a;{% elif rep.rating == 'review' %}background: rgba(37, 99, 235, 0.12); color: #2563eb;{% else %}background: rgba(220, 38, 38, 0.12); color: #dc2626;{% endif %}">
+            {{ rep.get_rating_display }}
+          </span>
+          <div>
+            <strong style="font-size: 15px;">{{ rep.item.application.position.name|default:"未指定岗位" }}</strong>
+            {% if rep.item.rule_version %}
+            <span class="muted" style="font-size: 12px; margin-left: 6px;">（依据规则 V{{ rep.item.rule_version.version }}）</span>
+            {% endif %}
+          </div>
+          <small class="muted">{{ rep.created_at|date:"Y-m-d H:i" }}</small>
+        </div>
+        <div class="actions" style="display: flex; gap: 8px; align-items: center;">
+          <a class="button secondary small" href="{% url 'analysis:report_detail' rep.pk %}">查看完整报告</a>
+          <a class="button secondary small" href="{% url 'analysis:report_pdf' rep.pk %}">下载 PDF</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding: 24px; text-align: center; color: var(--muted, #64748b);">
+      该候选人暂无 AI 分析报告（尚未对其发起过 AI 简历筛选）。
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- 工作经历 -->
   <section class="panel">
     <div class="panel-header">
       <div>

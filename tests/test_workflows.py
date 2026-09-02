@@ -1293,7 +1293,7 @@ class AnalysisTests(WorkflowFixtureMixin, TestCase):
         response = client.get(reverse("analysis:job_detail", args=[job.pk]))
 
         self.assertContains(response, "AI 正在逐份分析简历")
-        self.assertNotContains(response, "data-auto-refresh")
+        self.assertContains(response, "data-auto-refresh")
         self.assertContains(response, "刷新进度")
         self.assertContains(response, "0%")
 
@@ -3356,9 +3356,8 @@ class PageSmokeTests(WorkflowFixtureMixin, TestCase):
         client = self.authenticated_client(self.hr)
         url = reverse("analysis:report_detail", args=[report.pk])
         response = client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "打印 / 保存为 PDF")
         self.assertContains(response, "下载 PDF")
+        self.assertNotContains(response, "打印 / 保存为 PDF")
 
     def test_talent_detail_stacked_layout_and_fields(self):
         candidate = Candidate.objects.create(

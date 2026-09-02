@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from analysis.services.jd_comparison import create_ai_diff_summary
+from analysis.services.jd_merge import create_ai_merged_jd
 from recruitment.forms_configuration import (
     JdDecisionForm,
     PositionMatchForm,
@@ -330,6 +331,48 @@ def configuration_ai_diff(request, pk):
                 "差异摘要暂时无法生成，您仍可直接对照两侧岗位说明并继续人工确认。",
             )
     return redirect("recruitment:configuration_detail", pk=position.pk)
+
+
+@login_required
+def configuration_ai_merge_jd(request, pk):
+    position = get_object_or_404(Position, pk=pk)
+    configuration = ensure_position_configuration(position)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "message": "仅支持 POST 请求。"}, status=405)
+
+    doc_pos = configuration.document_position
+    try:
+        merged_jd, model_name = create_ai_merged_jd(
+            position,
+            doc_pos,
+            request.user,
+        )
+        record_audit(
+            request.user,
+            "position_jd.ai_merge",
+            position,
+            {
+                "document_position_id": configuration.document_position_id,
+                "model": model_name,
+            },
+        )
+        return JsonResponse({
+            "ok": True,
+            "source": "ai",
+            "merged_jd": merged_jd,
+            "message": "已通过 AI 智能融合岗位说明（已消除重复与冲突并保留高标准）。",
+        })
+    except Exception:
+        fallback_jd = build_merged_jd(
+            position.source_jd,
+            doc_pos.jd if doc_pos else "",
+        )
+        return JsonResponse({
+            "ok": True,
+            "source": "fallback",
+            "merged_jd": fallback_jd,
+            "warning": "智能融合服务暂不可用，已自动采用规则合并草稿。",
+        })
 
 
 @login_required

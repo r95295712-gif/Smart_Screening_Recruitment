@@ -21,17 +21,6 @@
   <div class="panel">
     <div class="panel-header">
       <div><h2>岗位说明对比与确认</h2></div>
-      <div class="actions" style="display: flex; gap: 8px; align-items: center;">
-        {% if decision_versions %}
-        <button type="button" class="button secondary" data-open-modal="jd-history-modal">
-          历史版本 ({{ decision_versions|length }})
-        </button>
-        {% endif %}
-        <form method="post" action="{% url 'recruitment:configuration_ai_diff' position.pk %}" data-loading-text="正在生成岗位说明差异摘要，通常需要几十秒。">
-          {% csrf_token %}
-          <button class="button secondary" type="submit">生成差异摘要</button>
-        </form>
-      </div>
     </div>
     <div class="jd-compare-grid">
       <div><h3>北森岗位说明</h3><div class="pre-wrap">{{ position.source_jd|default:"暂无内容" }}</div></div>
@@ -48,9 +37,35 @@
       <div class="ai-summary-body pre-wrap">{{ ai_summary }}</div>
     </div>
     {% endif %}
-    <form method="post" action="{% url 'recruitment:configuration_confirm_jd' position.pk %}" class="stack-form configuration-form" data-jd-decision-form>
+    <form id="ai-diff-form" method="post" action="{% url 'recruitment:configuration_ai_diff' position.pk %}" data-loading-text="正在生成岗位说明差异摘要，通常需要几十秒。">
       {% csrf_token %}
-      {{ jd_form.as_div }}
+    </form>
+    <form method="post" action="{% url 'recruitment:configuration_confirm_jd' position.pk %}" class="stack-form configuration-form" data-jd-decision-form data-ai-merge-url="{% url 'recruitment:configuration_ai_merge_jd' position.pk %}">
+      {% csrf_token %}
+      <div class="field-decision-type">
+        {{ jd_form.decision_type.errors }}
+        <label for="{{ jd_form.decision_type.id_for_label }}">{{ jd_form.decision_type.label }}</label>
+        {{ jd_form.decision_type }}
+      </div>
+      <div class="jd-middle-toolbar">
+        {% if decision_versions %}
+        <button type="button" class="button secondary small" data-open-modal="jd-history-modal">
+          历史版本 ({{ decision_versions|length }})
+        </button>
+        {% endif %}
+        <button class="button secondary small" type="submit" form="ai-diff-form">生成差异摘要</button>
+      </div>
+      <div class="field-confirmed-jd">
+        {{ jd_form.confirmed_jd.errors }}
+        <label for="{{ jd_form.confirmed_jd.id_for_label }}">{{ jd_form.confirmed_jd.label }}</label>
+        <div class="confirmed-jd-wrapper">
+          {{ jd_form.confirmed_jd }}
+          <div id="jd-textarea-loading-overlay" class="jd-textarea-loading" style="display: none;" hidden>
+            <div class="jd-loading-spinner"></div>
+            <div class="jd-loading-text">正在进行 AI 智能融合合并，请稍候...</div>
+          </div>
+        </div>
+      </div>
       <div id="jd-draft-notice" class="inline-feedback jd-draft-notice" style="margin-top: -6px; margin-bottom: 12px; font-weight: 600; color: var(--primary);" hidden></div>
       <button class="button primary" type="submit">确认岗位说明</button>
       <div class="inline-feedback" data-form-feedback role="status" aria-live="polite"></div>

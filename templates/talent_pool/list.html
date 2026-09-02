@@ -76,6 +76,9 @@
             </td>
             <td class="actions">
               <a class="text-link" href="{% url 'talent_pool:detail' membership.pk %}">查看</a>
+              {% if membership.latest_report %}
+                <a class="text-link" href="{% url 'analysis:report_detail' membership.latest_report.pk %}" title="匹配分 {{ membership.latest_report.score }}分 · {{ membership.latest_report.get_rating_display }}">AI报告</a>
+              {% endif %}
               <form method="post" action="{% url 'talent_pool:remove' membership.pk %}" onsubmit="return confirm('确定要将候选人「{{ membership.candidate }}」移出人才库吗？（管理员可在3天内恢复）');">
                 {% csrf_token %}
                 <button class="link-button danger" type="submit">移出</button>

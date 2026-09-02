@@ -1191,4 +1191,115 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(res.status_code, 302)
         self.assertFalse(PositionRuleVersion.objects.filter(pk=r3.pk).exists())
 
+    def test_ai_merge_jd_service_and_endpoint(self):
+        from unittest.mock import MagicMock
+        from analysis.models import ModelUsage, ModelVersion
+        from analysis.services.jd_merge import create_ai_merged_jd
+
+        ModelVersion.objects.all().delete()
+        model = ModelVersion.objects.create(
+            provider="openai",
+            name="gpt-4o-mini",
+            version="2024-07-18",
+            is_active=True,
+            input_cost_per_million=1,
+            output_cost_per_million=2,
+        )
+
+        mock_gateway = MagicMock()
+        mock_gateway.analyze.return_value = {
+            "payload": {
+                "merged_jd": "岗位职责：\n1. 负责市场调研与竞品分析\n\n任职要求：\n1. 本科以上学历\n2. 工作满3年以上（具有家居品类开发经验优先）"
+            },
+            "input_tokens": 100,
+            "output_tokens": 80,
+        }
+
+        doc = ReferenceDocument.objects.create(
+            name="test.docx",
+            document_type=ReferenceDocument.DocumentType.JOB_SUMMARY_DOCX,
+            content_hash="hash123",
+            version=1,
+            uploaded_by=self.hr,
+            status=ReferenceDocument.Status.ACTIVE,
+        )
+        doc_pos = DocumentPosition.objects.create(
+            reference_document=doc,
+            title="AI算法工程师",
+            jd="负责算法设计与模型微调，工作满2年以上。",
+        )
+        self.configuration.document_position = doc_pos
+        self.configuration.save()
+
+        merged, model_name = create_ai_merged_jd(
+            self.position,
+            doc_pos,
+            self.hr,
+            gateway=mock_gateway,
+        )
+        self.assertIn("工作满3年以上", merged)
+        self.assertEqual(model_name, str(model))
+        self.assertTrue(
+            ModelUsage.objects.filter(
+                model_version=model,
+                purpose=ModelUsage.Purpose.JD_MERGE,
+            ).exists()
+        )
+
+        # Test AJAX endpoint
+        client = self.authenticated_client(self.hr)
+        url = reverse("recruitment:configuration_ai_merge_jd", args=[self.position.pk])
+
+        # GET not allowed
+        res = client.get(url)
+        self.assertEqual(res.status_code, 405)
+
+        # POST returns json with fallback or ai
+        res = client.post(url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("merged_jd", data)
+
+    def test_build_merged_jd_deduplication_and_conflict_resolution(self):
+        from recruitment.services.configuration import build_merged_jd
+
+        beisen = (
+            "岗位职责：\n"
+            "1. 负责竞品分析\n"
+            "任职要求：\n"
+            "1. 本科以上学历，大学英语6级以上，听说读写能力顺畅。对欧美文化有一定了解；\n"
+            "2. 工作满3年以上（可以是其他行业，不同岗位的工作经验）；\n"
+            "3. 具备较好的产品敏锐度，受过一定产品思维训练\n"
+        )
+        doc = (
+            "岗位职责：\n"
+            "1. 负责竞品分析\n"
+            "任职要求：\n"
+            "1. 本科以上学历，大学英语6级以上；\n"
+            "2. 工作满2年以上，有亚马逊家居类目产品线开发经验的优先考虑；\n"
+            "3. 具备较好的产品敏锐度，逻辑清晰，擅长数据分析和挖掘各平台数据为决策提供依据；\n"
+        )
+        merged = build_merged_jd(beisen, doc)
+        # Should keep the higher work years standard (3 years)
+        self.assertIn("工作满3年以上", merged)
+        # Should NOT have duplicate naive "工作满2年以上" as a separate conflicting line
+        self.assertNotIn("工作满2年以上", merged)
+        # Should keep richer education / English line
+        self.assertIn("大学英语6级以上，听说读写能力顺畅", merged)
+        # Should deduplicate responsibility
+        self.assertEqual(merged.count("负责竞品分析"), 1)
+
+    def test_configuration_template_layout_toolbar_and_loading_overlay(self):
+        client = self.authenticated_client(self.hr)
+        response = client.get(
+            reverse("recruitment:configuration_detail", args=[self.position.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        # Assert layout components:
+        self.assertContains(response, 'data-ai-merge-url=')
+        self.assertContains(response, 'class="jd-middle-toolbar"')
+        self.assertContains(response, 'id="jd-textarea-loading-overlay"')
+        self.assertContains(response, 'class="jd-loading-spinner"')
+
 

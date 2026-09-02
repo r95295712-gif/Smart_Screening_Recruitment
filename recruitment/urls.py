@@ -34,6 +34,7 @@ from .views import (
 from .views_configuration import (
     configuration_add_reviewer,
     configuration_ai_diff,
+    configuration_ai_merge_jd,
     configuration_confirm_jd,
     configuration_confirm_match,
     configuration_delete_jd,
@@ -84,6 +85,11 @@ urlpatterns = [
         "position-configuration/<int:pk>/ai-diff/",
         configuration_ai_diff,
         name="configuration_ai_diff",
+    ),
+    path(
+        "position-configuration/<int:pk>/ai-merge-jd/",
+        configuration_ai_merge_jd,
+        name="configuration_ai_merge_jd",
     ),
     path(
         "position-configuration/<int:pk>/reviewers/",

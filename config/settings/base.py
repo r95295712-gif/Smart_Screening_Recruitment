@@ -72,7 +72,7 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": dj_database_url.parse(
         os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
-        conn_max_age=60,
+        conn_max_age=int(os.getenv("CONN_MAX_AGE", "60")),
         conn_health_checks=True,
     )
 }
@@ -113,6 +113,8 @@ INITIAL_REFERENCE_DOCUMENT_PATH = os.getenv(
 )
 
 if os.getenv("USE_S3_STORAGE", "false").lower() == "true":
+    from botocore.config import Config
+
     STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Storage"}
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -123,6 +125,11 @@ if os.getenv("USE_S3_STORAGE", "false").lower() == "true":
     AWS_QUERYSTRING_AUTH = True
     AWS_QUERYSTRING_EXPIRE = 300
     AWS_DEFAULT_ACL = None
+    AWS_S3_CLIENT_CONFIG = Config(
+        retries={"max_attempts": 3, "mode": "standard"},
+        connect_timeout=10,
+        read_timeout=30,
+    )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
