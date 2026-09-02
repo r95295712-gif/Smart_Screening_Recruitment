@@ -26,12 +26,23 @@
     <section class="panel position-applications-panel" id="application-list">
       <div class="panel-header application-toolbar"><h2>投递记录</h2><div class="actions"><button class="button primary" type="submit"{% if not configuration_state.can_analyze %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>批量 AI 分析</button><button class="button secondary" type="submit" formaction="{% url 'reviews:start' position.pk %}"{% if not configuration_state.can_review %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>送负责人审核</button><button class="button danger" type="submit" formaction="{% url 'recruitment:bulk_delete_applications' position.pk %}">批量删除</button></div></div>
       <div class="table-scroll application-table-scroll">
-        <table>
-          <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('[name=application_ids]').forEach(x=>x.checked=this.checked)"></th><th>候选人</th><th>投递时间</th><th>来源</th><th>简历</th><th>AI 状态</th><th>审核</th><th>操作</th></tr></thead>
+        <table class="application-table">
+          <thead>
+            <tr>
+              <th style="width: 44px; text-align: center;"><input type="checkbox" onclick="document.querySelectorAll('[name=application_ids]').forEach(x=>x.checked=this.checked)"></th>
+              <th style="min-width: 90px;">候选人</th>
+              <th style="min-width: 135px;">投递时间</th>
+              <th style="min-width: 110px;">来源</th>
+              <th style="min-width: 85px;">简历</th>
+              <th style="min-width: 130px;">AI 状态</th>
+              <th style="min-width: 85px;">审核</th>
+              <th style="min-width: 140px; width: 140px;">操作</th>
+            </tr>
+          </thead>
           <tbody>
             {% for application in applications %}
             <tr>
-              <td><input type="checkbox" name="application_ids" value="{{ application.pk }}"></td>
+              <td style="text-align: center;"><input type="checkbox" name="application_ids" value="{{ application.pk }}"></td>
               <td><a class="text-link" href="{% url 'recruitment:candidate_detail' application.candidate.pk %}?position_id={{ position.pk }}">{{ application.candidate }}</a></td>
               <td>{{ application.applied_at|date:"Y-m-d H:i"|default:"-" }}</td>
               <td>{{ application.get_source_type_display }}{% if application.source_channel %}<div class="muted">{{ application.source_channel }}</div>{% endif %}{% if application.linked_application %}<div class="muted">已关联人才库推荐</div>{% endif %}</td>
@@ -50,7 +61,9 @@
               </td>
               <td>{% with item=application.review_items.last %}{% if item %}{{ item.get_decision_display }}{% else %}未送审{% endif %}{% endwith %}</td>
               <td class="actions">
-                {% with item=application.analysis_items.last %}{% if item and item.status == "success" %}<a class="text-link" href="{% url 'talent_pool:add_from_application' application.pk %}">导入人才库</a>{% endif %}{% endwith %}<a class="text-link danger" href="{% url 'recruitment:delete_application' application.pk %}">删除</a>
+                <div class="table-actions">
+                  {% with item=application.analysis_items.last %}{% if item and item.status == "success" %}<a class="text-link" href="{% url 'talent_pool:add_from_application' application.pk %}">导入人才库</a>{% endif %}{% endwith %}<a class="text-link danger" href="{% url 'recruitment:delete_application' application.pk %}">删除</a>
+                </div>
               </td>
             </tr>
             {% empty %}<tr><td colspan="8">暂无投递记录。</td></tr>{% endfor %}
