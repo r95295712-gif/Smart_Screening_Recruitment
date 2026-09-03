@@ -26,9 +26,15 @@ def get_runtime_versions():
         version="system-v1",
         defaults={"content": DEFAULT_SYSTEM_PROMPT, "is_active": True},
     )
+    update_fields = []
     if not prompt.is_active:
         prompt.is_active = True
-        prompt.save(update_fields=["is_active"])
+        update_fields.append("is_active")
+    if prompt.content != DEFAULT_SYSTEM_PROMPT and prompt.content != "system":
+        prompt.content = DEFAULT_SYSTEM_PROMPT
+        update_fields.append("content")
+    if update_fields:
+        prompt.save(update_fields=update_fields)
     provider = "configured"
     model, _ = ModelVersion.objects.get_or_create(
         provider=provider,

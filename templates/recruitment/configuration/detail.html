@@ -42,18 +42,13 @@
     </form>
     <form method="post" action="{% url 'recruitment:configuration_confirm_jd' position.pk %}" class="stack-form configuration-form" data-jd-decision-form data-ai-merge-url="{% url 'recruitment:configuration_ai_merge_jd' position.pk %}">
       {% csrf_token %}
+      <div class="jd-middle-toolbar" style="margin-bottom: 12px;">
+        <button class="button secondary small" type="submit" form="ai-diff-form">生成差异摘要</button>
+      </div>
       <div class="field-decision-type">
         {{ jd_form.decision_type.errors }}
         <label for="{{ jd_form.decision_type.id_for_label }}">{{ jd_form.decision_type.label }}</label>
         {{ jd_form.decision_type }}
-      </div>
-      <div class="jd-middle-toolbar">
-        {% if decision_versions %}
-        <button type="button" class="button secondary small" data-open-modal="jd-history-modal">
-          历史版本 ({{ decision_versions|length }})
-        </button>
-        {% endif %}
-        <button class="button secondary small" type="submit" form="ai-diff-form">生成差异摘要</button>
       </div>
       <div class="field-confirmed-jd">
         {{ jd_form.confirmed_jd.errors }}
@@ -68,6 +63,13 @@
       </div>
       <div id="jd-draft-notice" class="inline-feedback jd-draft-notice" style="margin-top: -6px; margin-bottom: 12px; font-weight: 600; color: var(--primary);" hidden></div>
       <button class="button primary" type="submit">确认岗位说明</button>
+      {% if decision_versions %}
+      <div class="jd-history-toolbar" style="margin-top: 10px;">
+        <button type="button" class="button secondary small" data-open-modal="jd-history-modal">
+          历史版本 ({{ decision_versions|length }})
+        </button>
+      </div>
+      {% endif %}
       <div class="inline-feedback" data-form-feedback role="status" aria-live="polite"></div>
     </form>
     {{ beisen_jd|json_script:"beisen-jd-data" }}

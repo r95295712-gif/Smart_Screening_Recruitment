@@ -20,7 +20,7 @@ class RuleGenerationCancelled(RuleDraftError):
     pass
 
 
-RULE_SYSTEM_PROMPT = """你是招聘岗位规则整理助手。只根据岗位 JD 输出 JSON 草稿，不做候选人判断。JSON 必须包含 evaluation_jd、hard_requirements、dimensions、bonus_items、rating_thresholds。dimensions 中每项包含 name、weight、description，weight 必须是 0 到 100 的整数且总和必须为 100。rating_thresholds 必须严格输出为 {"priority": 80, "review": 60} 这种结构，priority 和 review 只能是 0 到 100 的整数下限，禁止输出数组、区间、对象或文字。"""
+RULE_SYSTEM_PROMPT = """你是招聘岗位规则整理助手。只根据岗位 JD 输出 JSON 草稿，不做候选人判断。JSON 必须包含 evaluation_jd、hard_requirements、dimensions、bonus_items、rating_thresholds。在提取 hard_requirements 时，年限、学历、资质等条件应提取为准入基准门槛（例如'1-3年'应表述为'具备1年以上相关经验（1-3年为佳）'），避免提取为封闭死板的绝对上限，确保后续高资历候选人正向兼容。dimensions 中每项包含 name、weight、description，weight 必须是 0 到 100 的整数且总和必须为 100。rating_thresholds 必须严格输出为 {"priority": 80, "review": 60} 这种结构，priority 和 review 只能是 0 到 100 的整数下限，禁止输出数组、区间、对象或文字。"""
 
 
 def _score_value(value, label, default):
