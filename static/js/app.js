@@ -271,10 +271,24 @@ function hideTaskOverlay() {
     overlay.setAttribute("aria-busy", "false");
   }
   document.body.classList.remove("task-overlay-open");
+  document.body.style.overflow = "";
   activeTaskSubmission?.buttons.forEach(({ button, wasDisabled }) => {
     button.disabled = wasDisabled;
   });
   activeTaskSubmission = null;
+}
+
+function cleanupGlobalUiLocks() {
+  document.body.style.overflow = "";
+  document.body.classList.remove("task-overlay-open");
+  const overlay = document.querySelector("[data-task-overlay]");
+  if (overlay) {
+    overlay.hidden = true;
+    overlay.setAttribute("aria-busy", "false");
+  }
+  document.querySelectorAll(".modal-overlay:not([hidden])").forEach((modal) => {
+    modal.hidden = true;
+  });
 }
 
 function showTaskCancellationNotice(cancelRequested) {
@@ -438,6 +452,7 @@ async function submitPageForm(form, submitter) {
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     currentMain.innerHTML = nextMain.innerHTML;
+    cleanupGlobalUiLocks();
     enhanceTables(currentMain);
     enhanceRowSelection(currentMain);
     enhanceReviewerEmailAutoFill(currentMain);
@@ -450,12 +465,14 @@ async function submitPageForm(form, submitter) {
     } catch (error) {}
     window.scrollTo(scrollX, scrollY);
   } catch (error) {
+    cleanupGlobalUiLocks();
     buttons.forEach((button) => {
       button.disabled = false;
     });
     form.dataset.fullSubmit = "true";
     form.requestSubmit(submitter || undefined);
   } finally {
+    cleanupGlobalUiLocks();
     buttons.forEach((button) => {
       button.disabled = false;
     });
@@ -465,6 +482,11 @@ async function submitPageForm(form, submitter) {
 document.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  const modalParent = form.closest(".modal-overlay");
+  if (modalParent) {
+    modalParent.hidden = true;
+    cleanupGlobalUiLocks();
+  }
   if ((form.method || "get").toLowerCase() !== "post") {
     savePageState();
     return;
@@ -973,173 +995,185 @@ function enhanceModals() {
       const modal = document.getElementById(modalId);
       if (modal) {
         modal.hidden = true;
-        document.body.style.overflow = "";
       }
+      cleanupGlobalUiLocks();
       return;
     }
     if (e.target.classList && e.target.classList.contains("modal-overlay")) {
       e.target.hidden = true;
-      document.body.style.overflow = "";
+      cleanupGlobalUiLocks();
     }
   });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      document.querySelectorAll(".modal-overlay:not([hidden])").forEach((modal) => {
-        modal.hidden = true;
-        document.body.style.overflow = "";
-      });
+      cleanupGlobalUiLocks();
     }
   });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  enhanceReviewerEmailAutoFill(document);
-  enhanceJdDecisionDynamicAutofill(document);
-  enhanceModals(document);
-
-  const themeOrder = ["system", "light", "dark"];
-  const themeLabels = {
-    system: "跟随系统",
-    light: "浅色模式",
-    dark: "深色模式",
+  const safeInit = (name, fn) => {
+    try {
+      fn();
+    } catch (err) {
+      console.error(`[App Init Error in ${name}]:`, err);
+    }
   };
-  const storedTheme = (() => {
-    try {
-      return localStorage.getItem("smart-screening-theme") || "light";
-    } catch (error) {
-      return "light";
-    }
-  })();
-  let currentTheme = themeOrder.includes(storedTheme) ? storedTheme : "system";
 
-  const applyTheme = (theme) => {
-    currentTheme = theme;
-    if (theme === "system") {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = theme;
-    }
-    try {
-      localStorage.setItem("smart-screening-theme", theme);
-    } catch (error) {}
-    document.querySelectorAll("[data-theme-label]").forEach((label) => {
-      label.textContent = themeLabels[theme];
-    });
+  safeInit("enhanceReviewerEmailAutoFill", () => enhanceReviewerEmailAutoFill(document));
+  safeInit("enhanceJdDecisionDynamicAutofill", () => enhanceJdDecisionDynamicAutofill(document));
+  safeInit("enhanceModals", () => enhanceModals());
+
+  safeInit("theme", () => {
+    const themeOrder = ["system", "light", "dark"];
+    const themeLabels = {
+      system: "跟随系统",
+      light: "浅色模式",
+      dark: "深色模式",
+    };
+    const storedTheme = (() => {
+      try {
+        return localStorage.getItem("smart-screening-theme") || "light";
+      } catch (error) {
+        return "light";
+      }
+    })();
+    let currentTheme = themeOrder.includes(storedTheme) ? storedTheme : "system";
+
+    const applyTheme = (theme) => {
+      currentTheme = theme;
+      if (theme === "system") {
+        delete document.documentElement.dataset.theme;
+      } else {
+        document.documentElement.dataset.theme = theme;
+      }
+      try {
+        localStorage.setItem("smart-screening-theme", theme);
+      } catch (error) {}
+      document.querySelectorAll("[data-theme-label]").forEach((label) => {
+        label.textContent = themeLabels[theme];
+      });
+      document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+        button.dataset.themeState = theme;
+        button.setAttribute("aria-label", `当前为${themeLabels[theme]}，点击切换`);
+      });
+    };
+
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
-      button.dataset.themeState = theme;
-      button.setAttribute("aria-label", `当前为${themeLabels[theme]}，点击切换`);
+      button.addEventListener("click", () => {
+        const nextIndex = (themeOrder.indexOf(currentTheme) + 1) % themeOrder.length;
+        applyTheme(themeOrder[nextIndex]);
+      });
     });
-  };
-
-  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextIndex = (themeOrder.indexOf(currentTheme) + 1) % themeOrder.length;
-      applyTheme(themeOrder[nextIndex]);
-    });
+    applyTheme(currentTheme);
   });
-  applyTheme(currentTheme);
 
-  const mobileToggle = document.querySelector("[data-mobile-nav-toggle]");
-  const sidebar = document.querySelector(".sidebar");
-  if (mobileToggle && sidebar) {
-    mobileToggle.addEventListener("click", () => {
-      const isOpen = sidebar.classList.toggle("nav-open");
-      mobileToggle.setAttribute("aria-expanded", String(isOpen));
-      mobileToggle.setAttribute("aria-label", isOpen ? "收起导航" : "展开导航");
-    });
-  }
+  safeInit("mobileNav", () => {
+    const mobileToggle = document.querySelector("[data-mobile-nav-toggle]");
+    const sidebar = document.querySelector(".sidebar");
+    if (mobileToggle && sidebar) {
+      mobileToggle.addEventListener("click", () => {
+        const isOpen = sidebar.classList.toggle("nav-open");
+        mobileToggle.setAttribute("aria-expanded", String(isOpen));
+        mobileToggle.setAttribute("aria-label", isOpen ? "收起导航" : "展开导航");
+      });
+    }
+  });
 
-  enhanceTables();
-  enhanceRowSelection();
-  enhanceReviewerEmailAutoFill();
-  restorePageState();
+  safeInit("enhanceTables", () => enhanceTables());
+  safeInit("enhanceRowSelection", () => enhanceRowSelection());
+  safeInit("restorePageState", () => restorePageState());
 
-  document.querySelectorAll("[data-rule-form]").forEach((form) => {
-    const editors = [];
-    form.querySelectorAll("[data-rule-editor]").forEach((editor) => {
-      const hiddenInput = document.getElementById(editor.dataset.inputId);
-      const rowsContainer = editor.querySelector("[data-rule-rows]");
-      const template = editor.querySelector("[data-rule-template]");
-      const addButton = editor.querySelector("[data-add-rule-item]");
-      const weightTotal = editor.querySelector("[data-weight-total]");
-      if (!hiddenInput || !rowsContainer || !template) return;
+  safeInit("ruleForms", () => {
+    document.querySelectorAll("[data-rule-form]").forEach((form) => {
+      const editors = [];
+      form.querySelectorAll("[data-rule-editor]").forEach((editor) => {
+        const hiddenInput = document.getElementById(editor.dataset.inputId);
+        const rowsContainer = editor.querySelector("[data-rule-rows]");
+        const template = editor.querySelector("[data-rule-template]");
+        const addButton = editor.querySelector("[data-add-rule-item]");
+        const weightTotal = editor.querySelector("[data-weight-total]");
+        if (!hiddenInput || !rowsContainer || !template) return;
 
-      const updateWeightTotal = () => {
-        if (!weightTotal) return;
-        const total = Array.from(
-          rowsContainer.querySelectorAll('[data-rule-key="weight"]')
-        ).reduce((sum, input) => sum + (Number(input.value) || 0), 0);
-        weightTotal.textContent = String(total);
-        weightTotal.closest(".weight-summary")?.classList.toggle("valid", total === 100);
-      };
+        const updateWeightTotal = () => {
+          if (!weightTotal) return;
+          const total = Array.from(
+            rowsContainer.querySelectorAll('[data-rule-key="weight"]')
+          ).reduce((sum, input) => sum + (Number(input.value) || 0), 0);
+          weightTotal.textContent = String(total);
+          weightTotal.closest(".weight-summary")?.classList.toggle("valid", total === 100);
+        };
 
-      const updateRowTitle = (row) => {
-        const nameInput = row.querySelector('[data-rule-key="name"]');
-        const title = row.querySelector("[data-row-title]");
-        if (title && nameInput) {
-          title.textContent = nameInput.value.trim() || title.dataset.defaultTitle || title.textContent;
-        }
-      };
+        const updateRowTitle = (row) => {
+          const nameInput = row.querySelector('[data-rule-key="name"]');
+          const title = row.querySelector("[data-row-title]");
+          if (title && nameInput) {
+            title.textContent = nameInput.value.trim() || title.dataset.defaultTitle || title.textContent;
+          }
+        };
 
-      const addRow = (item = {}) => {
-        if (typeof item === "string") {
-          item = { name: item, description: "" };
-        }
-        const fragment = template.content.cloneNode(true);
-        const row = fragment.querySelector(".rule-item-card");
-        const title = row.querySelector("[data-row-title]");
-        if (title) title.dataset.defaultTitle = title.textContent;
-        row.querySelectorAll("[data-rule-key]").forEach((input) => {
-          const key = input.dataset.ruleKey;
-          input.value = item[key] ?? "";
-          input.addEventListener("input", () => {
-            updateRowTitle(row);
+        const addRow = (item = {}) => {
+          if (typeof item === "string") {
+            item = { name: item, description: "" };
+          }
+          const fragment = template.content.cloneNode(true);
+          const row = fragment.querySelector(".rule-item-card");
+          const title = row.querySelector("[data-row-title]");
+          if (title) title.dataset.defaultTitle = title.textContent;
+          row.querySelectorAll("[data-rule-key]").forEach((input) => {
+            const key = input.dataset.ruleKey;
+            input.value = item[key] ?? "";
+            input.addEventListener("input", () => {
+              updateRowTitle(row);
+              updateWeightTotal();
+            });
+          });
+          row.querySelector("[data-remove-rule-item]")?.addEventListener("click", () => {
+            row.remove();
             updateWeightTotal();
           });
-        });
-        row.querySelector("[data-remove-rule-item]")?.addEventListener("click", () => {
-          row.remove();
+          rowsContainer.appendChild(fragment);
+          updateRowTitle(rowsContainer.lastElementChild);
           updateWeightTotal();
-        });
-        rowsContainer.appendChild(fragment);
-        updateRowTitle(rowsContainer.lastElementChild);
-        updateWeightTotal();
-      };
+        };
 
-      let initialItems = [];
-      try {
-        initialItems = JSON.parse(hiddenInput.value || "[]");
-      } catch (error) {
-        initialItems = [];
-      }
-      if (!Array.isArray(initialItems)) initialItems = [];
-      initialItems.forEach((item) => addRow(item));
-      if (!initialItems.length) addRow();
-      addButton?.addEventListener("click", () => addRow());
+        let initialItems = [];
+        try {
+          initialItems = JSON.parse(hiddenInput.value || "[]");
+        } catch (error) {
+          initialItems = [];
+        }
+        if (!Array.isArray(initialItems)) initialItems = [];
+        initialItems.forEach((item) => addRow(item));
+        if (!initialItems.length) addRow();
+        addButton?.addEventListener("click", () => addRow());
 
-      const serialize = () => {
-        const items = Array.from(rowsContainer.querySelectorAll(".rule-item-card"))
-          .map((row) => {
-            const item = {};
-            row.querySelectorAll("[data-rule-key]").forEach((input) => {
-              const key = input.dataset.ruleKey;
-              item[key] = key === "weight" ? Number(input.value) || 0 : input.value.trim();
-            });
-            return item;
-          })
-          .filter((item) => item.name || item.description);
-        hiddenInput.value = JSON.stringify(items);
-      };
-      editors.push({ serialize, updateWeightTotal });
-    });
+        const serialize = () => {
+          const items = Array.from(rowsContainer.querySelectorAll(".rule-item-card"))
+            .map((row) => {
+              const item = {};
+              row.querySelectorAll("[data-rule-key]").forEach((input) => {
+                const key = input.dataset.ruleKey;
+                item[key] = key === "weight" ? Number(input.value) || 0 : input.value.trim();
+              });
+              return item;
+            })
+            .filter((item) => item.name || item.description);
+          hiddenInput.value = JSON.stringify(items);
+        };
+        editors.push({ serialize, updateWeightTotal });
+      });
 
-    form.addEventListener("submit", () => {
-      editors.forEach(({ serialize }) => serialize());
+      form.addEventListener("submit", () => {
+        editors.forEach(({ serialize }) => serialize());
+      });
     });
   });
 
-  document.querySelectorAll("[data-auto-refresh][data-refresh-region]").forEach(
-    scheduleRegionRefresh
-  );
+  safeInit("regionRefresh", () => {
+    document.querySelectorAll("[data-auto-refresh][data-refresh-region]").forEach(
+      scheduleRegionRefresh
+    );
+  });
 });
