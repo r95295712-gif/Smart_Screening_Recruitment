@@ -39,6 +39,7 @@
         {% if request.user.is_system_admin %}
           <div class="nav-label">管理</div>
           <a class="{% if request.resolver_match.app_name == 'accounts' and request.resolver_match.url_name != 'logout' %}active{% endif %}" href="{% url 'accounts:user_list' %}">用户账号</a>
+          <a class="{% if request.resolver_match.url_name == 'model_settings' %}active{% endif %}" href="{% url 'analysis:model_settings' %}">模型测速与配置</a>
           <a class="{% if request.resolver_match.url_name == 'usage' %}active{% endif %}" href="{% url 'analysis:usage' %}">模型用量</a>
           <a class="{% if request.resolver_match.url_name == 'recycle_bin' or request.resolver_match.url_name == 'restore_application' %}active{% endif %}" href="{% url 'recruitment:recycle_bin' %}">回收站</a>
         {% endif %}

@@ -6,7 +6,8 @@
   <div><h1>{{ position.name }}</h1><p>{{ position.get_status_display }}</p></div>
   <div class="actions">
     <a class="button secondary" href="{% url 'recruitment:configuration_detail' position.pk %}">岗位配置</a>
-    <form method="post" action="{% url 'recruitment:set_position_status' position.pk %}">{% csrf_token %}{% if position.status == "active" %}<input type="hidden" name="status" value="historical"><button class="button secondary" type="submit">设为历史岗位</button>{% else %}<input type="hidden" name="status" value="active"><button class="button secondary" type="submit">临时启用岗位</button>{% endif %}</form>
+    <form method="post" action="{% url 'recruitment:set_position_status' position.pk %}" style="margin: 0; display: inline;">{% csrf_token %}{% if position.status == "active" %}<input type="hidden" name="status" value="historical"><button class="button secondary" type="submit">设为历史岗位</button>{% else %}<input type="hidden" name="status" value="active"><button class="button secondary" type="submit">临时启用岗位</button>{% endif %}</form>
+    <form method="post" action="{% url 'recruitment:delete_position' position.pk %}" onsubmit="return confirm('确定要删除岗位“{{ position.name }}”及其所有的配置、规则和投递数据吗？此操作不可逆！');" style="margin: 0; display: inline;">{% csrf_token %}<button class="button danger" type="submit">删除岗位</button></form>
   </div>
 </div>
 <section class="configuration-banner {% if configuration_state.can_analyze %}ready{% endif %}">
@@ -24,7 +25,7 @@
   <form method="post" action="{% url 'analysis:start' position.pk %}">
     {% csrf_token %}
     <section class="panel position-applications-panel" id="application-list">
-      <div class="panel-header application-toolbar"><h2>投递记录</h2><div class="actions"><button class="button primary" type="submit"{% if not configuration_state.can_analyze %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>批量 AI 分析</button><button class="button secondary" type="submit" formaction="{% url 'reviews:start' position.pk %}"{% if not configuration_state.can_review %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>送负责人审核</button><button class="button danger" type="submit" formaction="{% url 'recruitment:bulk_delete_applications' position.pk %}">批量删除</button></div></div>
+      <div class="panel-header application-toolbar"><h2>投递记录</h2><div class="actions"><button class="button primary" type="submit"{% if not configuration_state.can_analyze %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>批量 AI 分析</button><button class="button secondary" type="submit" formaction="{% url 'reviews:start' position.pk %}"{% if not configuration_state.can_review %} disabled title="{{ configuration_state.blockers|join:'、' }}"{% endif %}>送负责人审核</button><button class="button danger" type="submit" data-full-submit="true" formaction="{% url 'recruitment:bulk_delete_applications' position.pk %}">批量删除</button></div></div>
       <div class="table-scroll application-table-scroll">
         <table class="application-table">
           <thead>
@@ -62,7 +63,8 @@
               <td>{% with item=application.review_items.last %}{% if item %}{{ item.get_decision_display }}{% else %}未送审{% endif %}{% endwith %}</td>
               <td class="actions">
                 <div class="table-actions">
-                  {% with item=application.analysis_items.last %}{% if item and item.status == "success" %}<a class="text-link" href="{% url 'talent_pool:add_from_application' application.pk %}">导入人才库</a>{% endif %}{% endwith %}<a class="text-link danger" href="{% url 'recruitment:delete_application' application.pk %}">删除</a>
+                  {% with item=application.analysis_items.last %}{% if item and item.status == "success" %}<a class="text-link" href="{% url 'talent_pool:add_from_application' application.pk %}">导入人才库</a>{% endif %}{% endwith %}
+                  <button class="link-button danger" type="submit" data-full-submit="true" formaction="{% url 'recruitment:delete_application' application.pk %}" formmethod="post" onclick="return confirm('确定要将该投递记录移入回收站吗？');" style="color: var(--danger, #ef4444); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;">删除</button>
                 </div>
               </td>
             </tr>

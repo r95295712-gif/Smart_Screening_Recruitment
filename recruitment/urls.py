@@ -16,6 +16,7 @@ from .views import (
     delete_application,
     delete_notification,
     delete_position_initialization,
+    delete_position_view,
     delete_sync_job,
     notification_view,
     notifications,
@@ -41,6 +42,7 @@ from .views_configuration import (
     configuration_detail,
     configuration_list,
     configuration_remove_reviewer,
+    configuration_switch_jd,
     pinyin_email_api,
     reference_documents,
     reference_publish,
@@ -77,6 +79,11 @@ urlpatterns = [
         name="configuration_confirm_jd",
     ),
     path(
+        "position-configuration/<int:pk>/jd-decisions/<int:decision_pk>/switch/",
+        configuration_switch_jd,
+        name="configuration_switch_jd",
+    ),
+    path(
         "position-configuration/<int:pk>/jd-decisions/<int:decision_pk>/delete/",
         configuration_delete_jd,
         name="configuration_delete_jd",
@@ -103,6 +110,7 @@ urlpatterns = [
     ),
     path("positions/", position_list, name="position_list"),
     path("positions/<int:pk>/", position_detail, name="position_detail"),
+    path("positions/<int:pk>/delete/", delete_position_view, name="delete_position"),
     path("positions/<int:pk>/status/", set_position_status, name="set_position_status"),
     path(
         "positions/<int:position_id>/applications/bulk-delete/",

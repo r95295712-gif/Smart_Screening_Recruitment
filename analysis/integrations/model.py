@@ -24,25 +24,58 @@ class ModelServiceError(RuntimeError):
     pass
 
 
+def get_effective_model_settings():
+    """
+    获取当前生效的模型配置。
+    优先读取管理员在后台保存的 GlobalModelConfig（数据库覆盖配置），
+    若无自定义配置或未激活，则回退读取 settings (.env)。
+    """
+    try:
+        from analysis.models import GlobalModelConfig
+        config = GlobalModelConfig.get_active()
+        if config and config.api_key and config.model_name:
+            return {
+                "api_key": config.api_key,
+                "base_url": config.base_url or None,
+                "model_name": config.model_name,
+                "timeout": settings.MODEL_REQUEST_TIMEOUT,
+                "source": "custom",
+                "custom_config": config,
+            }
+    except Exception as exc:
+        logger.debug("Failed to query GlobalModelConfig: %s", exc)
+
+    return {
+        "api_key": settings.MODEL_API_KEY,
+        "base_url": settings.MODEL_BASE_URL or None,
+        "model_name": settings.MODEL_NAME,
+        "timeout": settings.MODEL_REQUEST_TIMEOUT,
+        "source": "env",
+        "custom_config": None,
+    }
+
+
 class ModelGateway:
     def __init__(self, client=None):
         self.client = client
 
     def ensure_configured(self):
-        if not settings.MODEL_API_KEY or not settings.MODEL_NAME:
+        cfg = get_effective_model_settings()
+        if not cfg["api_key"] or not cfg["model_name"]:
             raise ModelConfigurationError("尚未配置 MODEL_API_KEY 和 MODEL_NAME。")
 
     def analyze(self, system_prompt, user_prompt):
         self.ensure_configured()
+        cfg = get_effective_model_settings()
         client = self.client or OpenAI(
-            api_key=settings.MODEL_API_KEY,
-            base_url=settings.MODEL_BASE_URL or None,
-            timeout=settings.MODEL_REQUEST_TIMEOUT,
+            api_key=cfg["api_key"],
+            base_url=cfg["base_url"],
+            timeout=cfg["timeout"],
             max_retries=0,
         )
         try:
             response = client.chat.completions.create(
-                model=settings.MODEL_NAME,
+                model=cfg["model_name"],
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

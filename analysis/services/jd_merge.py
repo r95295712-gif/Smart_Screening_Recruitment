@@ -43,12 +43,16 @@ from django.conf import settings
 
 
 def get_runtime_model():
-    model = ModelVersion.objects.filter(is_active=True).first()
-    if not model and getattr(settings, "MODEL_NAME", ""):
+    from analysis.integrations.model import get_effective_model_settings
+    eff_model = get_effective_model_settings()["model_name"]
+    model = ModelVersion.objects.filter(name=eff_model, is_active=True).first()
+    if not model:
+        model = ModelVersion.objects.filter(is_active=True).first()
+    if not model and eff_model:
         model, _ = ModelVersion.objects.get_or_create(
             provider="configured",
-            name=settings.MODEL_NAME,
-            version=settings.MODEL_NAME,
+            name=eff_model,
+            version=eff_model,
             defaults={
                 "is_active": True,
                 "input_cost_per_million": getattr(settings, "MODEL_INPUT_COST_PER_MILLION", Decimal("0")),

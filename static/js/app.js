@@ -366,7 +366,18 @@ async function submitAsyncForm(form, submitter) {
   }
 }
 
-function shouldSubmitPageForm(form) {
+function shouldSubmitPageForm(form, submitter) {
+  if (submitter) {
+    if (submitter.dataset.fullSubmit !== undefined || submitter.dataset.asyncSubmit !== undefined) {
+      return false;
+    }
+    if (submitter.hasAttribute("formaction")) {
+      const actionUrl = new URL(submitter.formAction, window.location.href);
+      if (actionUrl.pathname !== window.location.pathname) {
+        return false;
+      }
+    }
+  }
   return (
     (form.method || "get").toLowerCase() === "post" &&
     form.dataset.asyncSubmit === undefined &&
@@ -380,9 +391,15 @@ function shouldSubmitPageForm(form) {
 }
 
 async function submitPageForm(form, submitter) {
+  let formAction = "";
+  if (typeof form.action === "string" && form.action) {
+    formAction = form.action;
+  } else if (typeof form.getAttribute === "function") {
+    formAction = form.getAttribute("action") || "";
+  }
   const action = submitter?.hasAttribute("formaction")
     ? submitter.formAction
-    : form.action || window.location.href;
+    : formAction || window.location.href;
   const payload = new FormData(form);
   if (submitter?.name) payload.set(submitter.name, submitter.value);
   const buttons = Array.from(
@@ -423,6 +440,8 @@ async function submitPageForm(form, submitter) {
     currentMain.innerHTML = nextMain.innerHTML;
     enhanceTables(currentMain);
     enhanceRowSelection(currentMain);
+    enhanceReviewerEmailAutoFill(currentMain);
+    enhanceJdDecisionDynamicAutofill(currentMain);
     currentMain
       .querySelectorAll("[data-auto-refresh][data-refresh-region]")
       .forEach(scheduleRegionRefresh);
@@ -456,7 +475,7 @@ document.addEventListener("submit", (event) => {
     return;
   }
   savePageState();
-  if (shouldSubmitPageForm(form)) {
+  if (shouldSubmitPageForm(form, event.submitter)) {
     event.preventDefault();
     submitPageForm(form, event.submitter);
     return;
@@ -794,8 +813,11 @@ function enhanceJdDecisionDynamicAutofill(root = document) {
     select.addEventListener("change", handleTypeChange);
   });
 
-  root.querySelectorAll("[data-apply-jd-id], [data-load-jd-version]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+  if (!document.documentElement.dataset.jdApplyDelegationReady) {
+    document.documentElement.dataset.jdApplyDelegationReady = "true";
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-apply-jd-id], [data-load-jd-version]");
+      if (!btn) return;
       const jdId = btn.dataset.applyJdId;
       const directVersion = btn.dataset.loadJdVersion;
       const directType = btn.dataset.decisionType || "manual";
@@ -832,7 +854,7 @@ function enhanceJdDecisionDynamicAutofill(root = document) {
       if (textarea) textarea.value = confirmedJd;
 
       if (noticeNode) {
-        noticeNode.textContent = `已应用岗位说明历史版本 V${version}，下方已同步展示其对应的规则列表。请在核对无误后点击「确认岗位说明」按钮正式生效。`;
+        noticeNode.textContent = `已载入岗位说明历史版本 V${version}，下方已同步展示其对应的规则列表。如需更新请在核对后点击「确认岗位说明」按钮。`;
         noticeNode.hidden = false;
       }
 
@@ -930,7 +952,7 @@ function enhanceJdDecisionDynamicAutofill(root = document) {
 
       form.scrollIntoView({ behavior: "smooth", block: "center" });
     });
-  });
+  }
 }
 
 function enhanceModals() {
@@ -1061,6 +1083,9 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       const addRow = (item = {}) => {
+        if (typeof item === "string") {
+          item = { name: item, description: "" };
+        }
         const fragment = template.content.cloneNode(true);
         const row = fragment.querySelector(".rule-item-card");
         const title = row.querySelector("[data-row-title]");

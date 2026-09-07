@@ -172,7 +172,7 @@
     </div>
     <div class="modal-body" style="padding: 16px 20px; overflow-y: auto; flex: 1;">
       <p class="muted" style="font-size: 13px; margin-bottom: 14px;">
-        点击 <strong>「应用」</strong> 会将该版本填入上方编辑框，并在规则模块即时展示对应规则；点击 <strong>「确认岗位说明」</strong> 后正式生效并自动采用该 JD 的最新规则。
+        点击 <strong>「切换生效」</strong> 可直接将该历史版本设为当前生效并自动采用对应规则；点击 <strong>「载入编辑」</strong> 可填入下方输入框供二次调整。
       </p>
       <div class="version-list" style="overflow-x: hidden;">
         {% for dec in decision_versions %}
@@ -188,8 +188,20 @@
             <span class="muted" style="font-size: 13px;">{{ dec.confirmed_at|date:"Y-m-d H:i" }}{% if dec.confirmed_by %} · {{ dec.confirmed_by.username }}{% endif %}</span>
           </div>
           <div class="actions" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-            <button type="button" class="button primary small" data-apply-jd-id="{{ dec.pk }}" data-version-num="{{ dec.version }}">
-              应用
+            {% if not dec.is_current %}
+            <form method="post" action="{% url 'recruitment:configuration_switch_jd' position.pk dec.pk %}" style="margin: 0;" onsubmit="return confirm('确定要将岗位说明切换为历史版本 V{{ dec.version }} 吗？对应规则将自动采用。');">
+              {% csrf_token %}
+              <button type="submit" class="button primary small">
+                切换生效
+              </button>
+            </form>
+            {% else %}
+            <button type="button" class="button small" disabled style="opacity: 0.5; cursor: not-allowed;" title="已是当前生效版本">
+              生效中
+            </button>
+            {% endif %}
+            <button type="button" class="button secondary small" data-apply-jd-id="{{ dec.pk }}" data-version-num="{{ dec.version }}" title="将内容载入编辑框">
+              载入编辑
             </button>
             {% if not dec.is_current %}
             <form method="post" action="{% url 'recruitment:configuration_delete_jd' position.pk dec.pk %}" onsubmit="return confirm('确定要删除岗位说明历史版本 V{{ dec.version }} 吗？');" style="margin: 0;">

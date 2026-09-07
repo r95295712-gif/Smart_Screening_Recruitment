@@ -36,10 +36,12 @@ def get_runtime_versions():
     if update_fields:
         prompt.save(update_fields=update_fields)
     provider = "configured"
+    from analysis.integrations.model import get_effective_model_settings
+    model_name = get_effective_model_settings()["model_name"] or "unconfigured"
     model, _ = ModelVersion.objects.get_or_create(
         provider=provider,
-        name=settings.MODEL_NAME or "unconfigured",
-        version=settings.MODEL_NAME or "unconfigured",
+        name=model_name,
+        version=model_name,
         defaults={
             "is_active": True,
             "input_cost_per_million": settings.MODEL_INPUT_COST_PER_MILLION,

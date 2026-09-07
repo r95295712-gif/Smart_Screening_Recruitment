@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}模型测速与配置{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>模型测速与配置</h1>
+    <p>实时测试大模型连通性与网络延迟；支持在后台动态覆盖模型配置，无需改动 .env 文件即可即刻生效。</p>
+  </div>
+</div>
+
+<!-- 1. 当前生效配置卡片 -->
+<section class="configuration-banner {% if effective.source == 'custom' %}ready{% endif %}" style="margin-bottom: 24px;">
+  <div style="flex: 1;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+      <strong>当前系统生效配置：</strong>
+      {% if effective.source == 'custom' %}
+        <span class="status success" style="font-weight: 600;">● 管理员自定义覆盖</span>
+      {% else %}
+        <span class="status" style="font-weight: 600; background: var(--border, #e2e8f0);">系统默认配置 (.env)</span>
+      {% endif %}
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13.5px; color: var(--text, #334155); margin-top: 6px;">
+      <div><strong>模型：</strong><code>{{ effective.model_name|default:"未配置" }}</code></div>
+      <div><strong>接口地址：</strong><code>{{ effective.base_url|default:"默认地址" }}</code></div>
+      <div><strong>API Key：</strong><code>{{ effective_masked_key|default:"未配置" }}</code></div>
+      {% if custom_active and effective.source == 'custom' %}
+        <div style="color: var(--muted, #64748b);">更新人：{{ custom_active.updated_by.username|default:"管理员" }} · {{ custom_active.updated_at|date:"Y-m-d H:i" }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if effective.source == 'custom' %}
+    <form method="post" action="{% url 'analysis:model_settings' %}" data-full-submit="true" onsubmit="return confirm('确定要取消自定义覆盖，恢复使用系统默认 (.env) 配置吗？');" style="margin: 0;">
+      {% csrf_token %}
+      <input type="hidden" name="config_action" value="reset">
+      <button class="button secondary small" type="submit">恢复系统默认配置</button>
+    </form>
+  {% endif %}
+</section>
+
+<!-- 2. 测速与动态配置面板 -->
+<section class="panel" style="max-width: 780px;">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h2 style="margin: 0; font-size: 16px;">大模型连接测速与配置</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted, #64748b);">
+        全空点击测试将测速系统默认 (.env) 服务；填写新参数可直接测试并一键应用。
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="button secondary small" id="btn-fill-env" title="将 .env 当前默认地址与 Key 填入输入框，方便您修改模型名称后快速测速">
+        一键填入系统默认值
+      </button>
+      <button type="button" class="button secondary small" id="btn-clear-fields">
+        清空
+      </button>
+    </div>
+  </div>
+
+  <form method="post" action="{% url 'analysis:model_settings' %}" data-full-submit="true" id="model-config-form" class="stack-form" style="margin-top: 16px;">
+    {% csrf_token %}
+    <input type="hidden" name="config_action" value="save">
+
+    <!-- Base URL -->
+    <div class="form-group" style="margin-bottom: 16px;">
+      <label for="input-base-url" style="display: block; font-weight: 600; margin-bottom: 6px;">
+        1. 接口地址 (Base URL)
+      </label>
+      <input
+        type="text"
+        id="input-base-url"
+        name="base_url"
+        placeholder="留空则测速/使用系统默认配置 (如 https://ai.libibi.top/v1)"
+        style="width: 100%; padding: 8px 12px; font-size: 14px; border: 1px solid var(--border, #cbd5e1); border-radius: 6px;"
+      >
+      <small style="color: var(--muted, #64748b); font-size: 12px; display: block; margin-top: 4px;">
+        提示：大部分第三方中转站规范要求末尾携带 <code>/v1</code>（如 <code>https://ai.libibi.top/v1</code>）。
+      </small>
+    </div>
+
+    <!-- API Key -->
+    <div class="form-group" style="margin-bottom: 16px;">
+      <label for="input-api-key" style="display: block; font-weight: 600; margin-bottom: 6px;">
+        2. API 密钥 (API Key)
+      </label>
+      <div style="position: relative; display: flex; align-items: center;">
+        <input
+          type="password"
+          id="input-api-key"
+          name="api_key"
+          placeholder="留空则测速/使用系统默认配置 (sk-...)"
+          autocomplete="off"
+          style="width: 100%; padding: 8px 40px 8px 12px; font-size: 14px; border: 1px solid var(--border, #cbd5e1); border-radius: 6px;"
+        >
+        <button
+          type="button"
+          id="toggle-api-key"
+          title="切换明文/密文显示"
+          style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; padding: 4px 6px; font-size: 16px; color: var(--muted, #64748b); line-height: 1;"
+        >
+          👁️
+        </button>
+      </div>
+      <small style="color: var(--muted, #64748b); font-size: 12px; display: block; margin-top: 4px;">
+        默认密码遮蔽显示，点击右侧眼睛图标可查看明文。
+      </small>
+    </div>
+
+    <!-- Model Name -->
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label for="input-model-name" style="display: block; font-weight: 600; margin-bottom: 6px;">
+        3. 模型名称 (Model Name)
+      </label>
+      <input
+        type="text"
+        id="input-model-name"
+        name="model_name"
+        placeholder="留空则测速/使用系统默认配置 (如 gpt-5.6-luna)"
+        style="width: 100%; padding: 8px 12px; font-size: 14px; border: 1px solid var(--border, #cbd5e1); border-radius: 6px;"
+      >
+    </div>
+
+    <!-- 测速结果显示区域 -->
+    <div id="ping-result-card" style="display: none; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+      <div id="ping-result-status" style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;"></div>
+      <div id="ping-result-details" style="font-size: 13px;"></div>
+    </div>
+
+    <!-- 操作按钮群 -->
+    <div class="actions" style="display: flex; gap: 12px; align-items: center;">
+      <button type="button" class="button primary" id="btn-ping" style="min-width: 140px;">
+        ⚡ 测试连接与延迟
+      </button>
+
+      <button type="submit" class="button primary" id="btn-save-config" style="display: none; background: #059669; border-color: #059669;">
+        💾 保存并覆盖项目模型配置
+      </button>
+
+      <span id="ping-loading-spinner" style="display: none; color: var(--muted, #64748b); font-size: 13px; align-items: center; gap: 6px;">
+        <span class="loading-spin" style="display: inline-block; animation: spin 1s linear infinite;">⏳</span>
+        正在发起探针请求测速，请稍候...
+      </span>
+    </div>
+  </form>
+</section>
+
+<!-- 内置系统默认配置数据 (供一键填入使用) -->
+<script>
+  const ENV_CONFIG = {
+    baseUrl: "{{ env_config.base_url|escapejs }}",
+    apiKey: "{{ env_config.api_key|escapejs }}",
+    modelName: "{{ env_config.model_name|escapejs }}"
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const baseUrlInput = document.getElementById("input-base-url");
+    const apiKeyInput = document.getElementById("input-api-key");
+    const modelNameInput = document.getElementById("input-model-name");
+    const toggleKeyBtn = document.getElementById("toggle-api-key");
+    const btnPing = document.getElementById("btn-ping");
+    const btnSave = document.getElementById("btn-save-config");
+    const btnFillEnv = document.getElementById("btn-fill-env");
+    const btnClear = document.getElementById("btn-clear-fields");
+    const resultCard = document.getElementById("ping-result-card");
+    const resultStatus = document.getElementById("ping-result-status");
+    const resultDetails = document.getElementById("ping-result-details");
+    const loadingSpinner = document.getElementById("ping-loading-spinner");
+    const form = document.getElementById("model-config-form");
+
+    // 1. 小眼睛明文/密文切换
+    toggleKeyBtn.addEventListener("click", () => {
+      if (apiKeyInput.type === "password") {
+        apiKeyInput.type = "text";
+        toggleKeyBtn.textContent = "🙈";
+        toggleKeyBtn.title = "切换为密文隐藏";
+      } else {
+        apiKeyInput.type = "password";
+        toggleKeyBtn.textContent = "👁️";
+        toggleKeyBtn.title = "切换为明文显示";
+      }
+    });
+
+    // 2. 一键填入默认值
+    btnFillEnv.addEventListener("click", () => {
+      baseUrlInput.value = ENV_CONFIG.baseUrl;
+      apiKeyInput.value = ENV_CONFIG.apiKey;
+      modelNameInput.value = ENV_CONFIG.modelName;
+      hideResult();
+    });
+
+    // 3. 清空输入
+    btnClear.addEventListener("click", () => {
+      baseUrlInput.value = "";
+      apiKeyInput.value = "";
+      modelNameInput.value = "";
+      hideResult();
+    });
+
+    // 输入改动时，如果改动了配置，隐藏保存按钮要求重新测速
+    [baseUrlInput, apiKeyInput, modelNameInput].forEach((input) => {
+      input.addEventListener("input", () => {
+        btnSave.style.display = "none";
+      });
+    });
+
+    function hideResult() {
+      resultCard.style.display = "none";
+      btnSave.style.display = "none";
+    }
+
+    function showResult(success, title, detailsHtml) {
+      resultCard.style.display = "block";
+      if (success) {
+        resultCard.style.background = "rgba(16, 185, 129, 0.1)";
+        resultCard.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+        resultCard.style.color = "#065f46";
+        resultStatus.innerHTML = `<span style="color: #10b981; font-size: 16px;">●</span> ${title}`;
+      } else {
+        resultCard.style.background = "rgba(239, 68, 68, 0.08)";
+        resultCard.style.border = "1px solid rgba(239, 68, 68, 0.35)";
+        resultCard.style.color = "#991b1b";
+        resultStatus.innerHTML = `<span style="color: #ef4444; font-size: 16px;">✕</span> ${title}`;
+      }
+      resultDetails.innerHTML = detailsHtml || "";
+    }
+
+    // 4. 测速请求
+    btnPing.addEventListener("click", async () => {
+      const baseUrl = baseUrlInput.value.trim();
+      const apiKey = apiKeyInput.value.trim();
+      const modelName = modelNameInput.value.trim();
+
+      // 判断空状态
+      const isAllEmpty = (!baseUrl && !apiKey && !modelName);
+      const isPartiallyFilled = !isAllEmpty && (!baseUrl || !apiKey || !modelName);
+
+      if (isPartiallyFilled) {
+        showResult(false, "请完善全部配置信息", "接口地址 (Base URL)、API Key 和模型名称均不能为空；如需测试系统默认配置，请全部留空后点击测试。");
+        btnSave.style.display = "none";
+        return;
+      }
+
+      btnPing.disabled = true;
+      btnSave.style.display = "none";
+      loadingSpinner.style.display = "inline-flex";
+      resultCard.style.display = "none";
+
+      try {
+        const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+        const response = await fetch("{% url 'analysis:model_ping_api' %}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            base_url: baseUrl,
+            api_key: apiKey,
+            model_name: modelName
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.ok) {
+          const configType = data.is_default ? "系统默认 (.env) 配置" : "自定义配置";
+          const title = `${configType} 测速成功！网络延迟: ${data.latency_ms} ms`;
+          const details = `
+            <div><strong>测试模型：</strong><code>${data.model_name}</code></div>
+            <div><strong>服务地址：</strong><code>${data.base_url || "系统默认地址"}</code></div>
+            <div style="margin-top: 6px; color: #047857;">探针测试已顺利完成，大模型响应正常。${!data.is_default ? "点击右侧按钮可直接保存并应用此配置！" : ""}</div>
+          `;
+          showResult(true, title, details);
+
+          // 只有自定义配置完整填写时，才展示“保存并应用”按钮
+          if (!data.is_default) {
+            btnSave.style.display = "inline-block";
+          }
+        } else {
+          const title = data.is_default ? "系统默认配置连接失败" : "模型连接测试失败";
+          const details = `<div>${data.message || "未知错误，请检查网络或参数。"}</div>`;
+          showResult(false, title, details);
+          btnSave.style.display = "none";
+        }
+      } catch (err) {
+        showResult(false, "网络请求异常", `未能完成测速请求: ${err.message || err}`);
+        btnSave.style.display = "none";
+      } finally {
+        btnPing.disabled = false;
+        loadingSpinner.style.display = "none";
+      }
+    });
+
+    // 表单提交前确认
+    form.addEventListener("submit", (e) => {
+      const modelName = modelNameInput.value.trim();
+      if (!confirm(`确定要将项目的大模型配置覆盖为 “${modelName}” 吗？保存后所有规则生成与简历分析将立即生效。`)) {
+        e.preventDefault();
+      }
+    });
+  });
+</script>
+
+<style>
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

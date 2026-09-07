@@ -352,3 +352,33 @@ class ModelUsage(models.Model):
         default=Purpose.RESUME_ANALYSIS,
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class GlobalModelConfig(models.Model):
+    base_url = models.CharField(max_length=512, blank=True, verbose_name="模型接口地址")
+    api_key = models.CharField(max_length=512, blank=True, verbose_name="API Key")
+    model_name = models.CharField(max_length=255, blank=True, verbose_name="模型名称")
+    is_active = models.BooleanField(default=True, verbose_name="是否启用覆盖")
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_model_configs",
+        verbose_name="更新人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        verbose_name = "全局模型配置"
+        verbose_name_plural = "全局模型配置"
+
+    @classmethod
+    def get_active(cls):
+        return cls.objects.filter(is_active=True).first()
+
+    def __str__(self):
+        status = "已启用" if self.is_active else "已停用"
+        return f"{self.model_name} ({self.base_url}) - {status}"

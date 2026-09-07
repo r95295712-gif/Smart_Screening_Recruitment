@@ -62,7 +62,7 @@
   <h2>全部岗位投递</h2>
   <table><thead><tr><th>岗位</th><th>来源</th><th>招聘渠道</th><th>投递时间</th><th>AI 报告</th><th>操作</th></tr></thead><tbody>
     {% for application in candidate.visible_applications %}
-      <tr><td>{{ application.position }}</td><td>{{ application.get_source_type_display }}</td><td>{{ application.source_channel|default:"-" }}</td><td>{{ application.applied_at|date:"Y-m-d"|default:"-" }}</td><td>{% with item=application.analysis_items.last %}{% if item and item.status == 'success' %}<a class="text-link" href="{% url 'analysis:job_detail' item.job.pk %}">查看</a>{% else %}-{% endif %}{% endwith %}</td><td><a class="text-link danger" href="{% url 'recruitment:delete_application' application.pk %}">删除</a></td></tr>
+      <tr><td>{{ application.position }}</td><td>{{ application.get_source_type_display }}</td><td>{{ application.source_channel|default:"-" }}</td><td>{{ application.applied_at|date:"Y-m-d"|default:"-" }}</td><td>{% with item=application.analysis_items.last %}{% if item and item.status == 'success' %}<a class="text-link" href="{% url 'analysis:job_detail' item.job.pk %}">查看</a>{% else %}-{% endif %}{% endwith %}</td><td><form method="post" action="{% url 'recruitment:delete_application' application.pk %}" onsubmit="return confirm('确定要将该投递记录移入回收站吗？');" style="display: inline; margin: 0;">{% csrf_token %}<button class="link-button danger" type="submit" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--danger, #ef4444); text-decoration: underline;">删除</button></form></td></tr>
     {% empty %}<tr><td colspan="6">暂无投递记录</td></tr>{% endfor %}
   </tbody></table>
 </section>

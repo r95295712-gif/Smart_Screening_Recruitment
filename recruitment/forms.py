@@ -67,4 +67,4 @@ class ApplicationFilterForm(forms.Form):
 
 
 class DeleteApplicationForm(forms.Form):
-    reason = forms.CharField(max_length=255, label="删除原因")
+    reason = forms.CharField(max_length=255, required=False, label="删除原因")

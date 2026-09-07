@@ -19,6 +19,7 @@ from .views_rules import (
     rule_list,
     rule_publish,
 )
+from .views_settings import model_ping_api, model_settings_view
 
 app_name = "analysis"
 
@@ -51,4 +52,6 @@ urlpatterns = [
     path("rules/<int:rule_id>/publish/", rule_publish, name="rule_publish"),
     path("rules/<int:rule_id>/delete/", rule_delete, name="rule_delete"),
     path("usage/", usage_dashboard, name="usage"),
+    path("model-settings/", model_settings_view, name="model_settings"),
+    path("api/model-ping/", model_ping_api, name="model_ping_api"),
 ]

@@ -334,14 +334,16 @@ def confirm_jd(
 ):
     configuration = ensure_position_configuration(position)
     document_position = configuration.document_position
-    beisen_jd = (position.source_jd or "").strip()
-    document_jd = (document_position.jd if document_position else "").strip()
-    if decision_type == PositionJdDecision.DecisionType.BEISEN:
+    beisen_jd = (position.source_jd or "").strip().replace("\r\n", "\n")
+    document_jd = (
+        (document_position.jd if document_position else "").strip().replace("\r\n", "\n")
+    )
+    if decision_type == PositionJdDecision.DecisionType.BEISEN and not (confirmed_jd or "").strip():
         selected_jd = beisen_jd
     elif decision_type == PositionJdDecision.DecisionType.MERGED and not (confirmed_jd or "").strip():
         selected_jd = build_merged_jd(beisen_jd, document_jd)
     else:
-        selected_jd = (confirmed_jd or "").strip()
+        selected_jd = (confirmed_jd or "").strip().replace("\r\n", "\n")
     if not selected_jd:
         raise ValueError("确认后的岗位说明不能为空。")
 
@@ -350,7 +352,7 @@ def confirm_jd(
     current = position.jd_decisions.filter(is_current=True).first()
     if current and (
         current.decision_type == decision_type
-        and current.confirmed_jd.strip() == selected_jd
+        and current.confirmed_jd.strip().replace("\r\n", "\n") == selected_jd
         and current.source_jd_hash == source_jd_hash
         and current.document_jd_hash == document_jd_hash
     ):
@@ -365,14 +367,15 @@ def confirm_jd(
         return current
 
     # Check if this exact JD decision already exists in history
-    existing_match = (
-        position.jd_decisions.filter(
-            confirmed_jd=selected_jd,
-            decision_type=decision_type,
-        )
-        .order_by("-version")
-        .first()
-    )
+    existing_candidates = position.jd_decisions.filter(
+        decision_type=decision_type,
+    ).order_by("-version")
+    existing_match = None
+    for cand in existing_candidates:
+        if cand.confirmed_jd.strip().replace("\r\n", "\n") == selected_jd:
+            existing_match = cand
+            break
+
     if existing_match:
         position.jd_decisions.filter(is_current=True).update(is_current=False)
         existing_match.is_current = True
@@ -417,6 +420,29 @@ def confirm_jd(
             "decision_type": decision_type,
             "version": decision.version,
         },
+    )
+    return decision
+
+
+@transaction.atomic
+def switch_current_jd(position, decision, actor):
+    if decision.position_id != position.pk:
+        raise ValueError("岗位说明版本与岗位不匹配。")
+    current = position.jd_decisions.filter(is_current=True).first()
+    if current and current.pk == decision.pk:
+        return current
+
+    position.jd_decisions.filter(is_current=True).update(is_current=False)
+    decision.is_current = True
+    decision.save(update_fields=["is_current"])
+    position.evaluation_jd = decision.confirmed_jd
+    position.save(update_fields=["evaluation_jd"])
+    _sync_active_rule_for_jd(position, decision, actor)
+    record_audit(
+        actor,
+        "position_jd.switch",
+        decision,
+        {"position_id": position.pk, "version": decision.version},
     )
     return decision
 

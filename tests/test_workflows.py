@@ -3495,3 +3495,118 @@ class PageSmokeTests(WorkflowFixtureMixin, TestCase):
         self.assertFalse(TalentInterview.objects.filter(pk=interview.pk).exists())
 
 
+class DeletionFeaturesOptimizationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="del_admin",
+            password="password123",
+            role=User.Role.ADMIN,
+            must_change_password=False,
+        )
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["auth_session_version"] = self.user.session_version
+        session["last_activity_at"] = timezone.now().timestamp()
+        session["login_started_at"] = timezone.now().timestamp()
+        session.save()
+        self.position = Position.objects.create(name="全栈开发工程师", status=Position.Status.ACTIVE)
+        self.candidate1 = Candidate.objects.create(applicant_id="app_001", name="候选人甲")
+        self.candidate2 = Candidate.objects.create(applicant_id="app_002", name="候选人乙")
+        self.app1 = Application.objects.create(
+            candidate=self.candidate1, position=self.position, source_type=Application.SourceType.BEISEN
+        )
+        self.app2 = Application.objects.create(
+            candidate=self.candidate2, position=self.position, source_type=Application.SourceType.BEISEN
+        )
+
+    def test_single_application_delete_without_reason(self):
+        url = reverse("recruitment:delete_application", args=[self.app1.pk])
+        resp = self.client.post(url, data={})
+        self.assertEqual(resp.status_code, 302)
+        self.app1.refresh_from_db()
+        self.assertIsNotNone(self.app1.deleted_at)
+        self.assertEqual(self.app1.delete_reason, "用户直接删除")
+
+    def test_bulk_delete_applications_without_reason(self):
+        url = reverse("recruitment:bulk_delete_applications", args=[self.position.pk])
+        resp = self.client.post(
+            url,
+            data={
+                "application_ids": [str(self.app1.pk), str(self.app2.pk)],
+                "confirmed": "1",
+                "reason": "",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.app1.refresh_from_db()
+        self.app2.refresh_from_db()
+        self.assertIsNotNone(self.app1.deleted_at)
+        self.assertIsNotNone(self.app2.deleted_at)
+
+    def test_position_delete_cascades_all_configurations_and_apps(self):
+        from recruitment.models import PositionConfiguration, PositionJdDecision
+        from analysis.models import PositionRuleVersion
+
+        PositionConfiguration.objects.create(position=self.position)
+        PositionJdDecision.objects.create(
+            position=self.position,
+            version=1,
+            decision_type=PositionJdDecision.DecisionType.MANUAL,
+            confirmed_jd="测试JD",
+            is_current=True,
+            confirmed_by=self.user,
+        )
+        PositionRuleVersion.objects.create(
+            position=self.position,
+            version=1,
+            evaluation_jd="测试规则",
+            status=PositionRuleVersion.Status.PUBLISHED,
+            created_by=self.user,
+        )
+
+        delete_url = reverse("recruitment:delete_position", args=[self.position.pk])
+        resp = self.client.post(delete_url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertRedirects(resp, reverse("recruitment:position_list"))
+
+        self.assertFalse(Position.objects.filter(pk=self.position.pk).exists())
+        self.assertFalse(PositionConfiguration.objects.filter(position_id=self.position.pk).exists())
+        self.assertFalse(PositionJdDecision.objects.filter(position_id=self.position.pk).exists())
+        self.assertFalse(PositionRuleVersion.objects.filter(position_id=self.position.pk).exists())
+        self.assertFalse(Application.objects.filter(position_id=self.position.pk).exists())
+
+    def test_interview_delete_ajax_and_referer(self):
+        from talent_pool.models import TalentInterview
+
+        interview = TalentInterview.objects.create(
+            candidate=self.candidate1,
+            position_name="全栈开发",
+            first_interviewer="李老师",
+            result="初试通过",
+        )
+
+        del_url = reverse("talent_pool:interview_delete", args=[interview.pk])
+        resp = self.client.post(del_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk).exists())
+
+        interview2 = TalentInterview.objects.create(
+            candidate=self.candidate2,
+            position_name="测试岗位",
+            first_interviewer="张老师",
+            result="待沟通",
+        )
+        del_url2 = reverse("talent_pool:interview_delete", args=[interview2.pk])
+        resp2 = self.client.post(
+            del_url2,
+            HTTP_REFERER="http://testserver/talent-pool/interviews/?q=候选人&page=2",
+        )
+        self.assertEqual(resp2.status_code, 302)
+        self.assertEqual(
+            unquote(resp2.url), "http://testserver/talent-pool/interviews/?q=候选人&page=2"
+        )
+        self.assertFalse(TalentInterview.objects.filter(pk=interview2.pk).exists())
+
+

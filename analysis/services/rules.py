@@ -20,7 +20,7 @@ class RuleGenerationCancelled(RuleDraftError):
     pass
 
 
-RULE_SYSTEM_PROMPT = """你是招聘岗位规则整理助手。只根据岗位 JD 输出 JSON 草稿，不做候选人判断。JSON 必须包含 evaluation_jd、hard_requirements、dimensions、bonus_items、rating_thresholds。在提取 hard_requirements 时，年限、学历、资质等条件应提取为准入基准门槛（例如'1-3年'应表述为'具备1年以上相关经验（1-3年为佳）'），避免提取为封闭死板的绝对上限，确保后续高资历候选人正向兼容。dimensions 中每项包含 name、weight、description，weight 必须是 0 到 100 的整数且总和必须为 100。rating_thresholds 必须严格输出为 {"priority": 80, "review": 60} 这种结构，priority 和 review 只能是 0 到 100 的整数下限，禁止输出数组、区间、对象或文字。"""
+RULE_SYSTEM_PROMPT = """你是招聘岗位规则整理助手。只根据岗位 JD 输出 JSON 草稿，不做候选人判断。JSON 必须包含 evaluation_jd、hard_requirements、dimensions、bonus_items、rating_thresholds。在提取 hard_requirements 时，年限、学历、资质等条件应提取为准入基准门槛（例如'1-3年'应表述为'具备1年以上相关经验（1-3年为佳）'），避免提取为封闭死板的绝对上限，确保后续高资历候选人正向兼容。hard_requirements 和 bonus_items 中每项必须包含 name 和 description（name 为该项精炼标题，description 为具体说明，若无额外说明可填空字符串 ""）。dimensions 中每项包含 name、weight、description，weight 必须是 0 到 100 的整数且总和必须为 100。rating_thresholds 必须严格输出为 {"priority": 80, "review": 60} 这种结构，priority 和 review 只能是 0 到 100 的整数下限，禁止输出数组、区间、对象或文字。"""
 
 
 def _score_value(value, label, default):
@@ -69,6 +69,39 @@ def validate_rule_payload(payload):
         raise RuleDraftError("岗位规则列表字段格式错误。")
     if not isinstance(thresholds, dict):
         raise RuleDraftError("推荐等级区间格式错误。")
+
+    def _normalize_items(raw_items):
+        normalized = []
+        for item in raw_items:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    normalized.append({"name": text, "description": ""})
+            elif isinstance(item, dict):
+                name = str(
+                    item.get("name")
+                    or item.get("title")
+                    or item.get("requirement")
+                    or item.get("item")
+                    or ""
+                ).strip()
+                description = str(
+                    item.get("description")
+                    or item.get("desc")
+                    or item.get("details")
+                    or item.get("note")
+                    or ""
+                ).strip()
+                if not name and description:
+                    name = description
+                    description = ""
+                if name:
+                    normalized.append({"name": name, "description": description})
+        return normalized
+
+    normalized_hard_requirements = _normalize_items(hard_requirements)
+    normalized_bonus_items = _normalize_items(bonus_items)
+
     normalized_dimensions = []
     for item in dimensions:
         if not isinstance(item, dict):
@@ -97,9 +130,9 @@ def validate_rule_payload(payload):
         raise RuleDraftError("优先推荐分数线必须高于建议复核分数线。")
     return {
         "evaluation_jd": str(payload.get("evaluation_jd", "")),
-        "hard_requirements": hard_requirements,
+        "hard_requirements": normalized_hard_requirements,
         "dimensions": normalized_dimensions,
-        "bonus_items": bonus_items,
+        "bonus_items": normalized_bonus_items,
         "rating_thresholds": {
             "priority": priority,
             "review": review,

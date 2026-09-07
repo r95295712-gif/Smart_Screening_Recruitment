@@ -25,6 +25,7 @@ from .presentation import build_sync_issue_rows, resume_display_name
 from .services.common import record_audit
 from .services.configuration import configuration_state
 from .services.deletion import (
+    delete_position,
     restore_application,
     soft_delete_application,
     soft_delete_applications,
@@ -272,8 +273,11 @@ def candidate_detail(request, pk):
 def delete_application(request, pk):
     application = get_object_or_404(Application.objects.visible(), pk=pk)
     form = DeleteApplicationForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        soft_delete_application(application, request.user, form.cleaned_data["reason"])
+    if request.method == "POST":
+        reason = ""
+        if form.is_valid():
+            reason = form.cleaned_data.get("reason") or ""
+        soft_delete_application(application, request.user, reason)
         messages.success(request, "投递记录已移入回收站。")
         return redirect("recruitment:position_detail", pk=application.position_id)
     return render(
@@ -302,11 +306,14 @@ def bulk_delete_applications(request, position_id):
     form = DeleteApplicationForm(
         request.POST if request.POST.get("confirmed") == "1" else None
     )
-    if request.POST.get("confirmed") == "1" and form.is_valid():
+    if request.POST.get("confirmed") == "1":
+        reason = ""
+        if form.is_valid():
+            reason = form.cleaned_data.get("reason") or ""
         deleted = soft_delete_applications(
             applications,
             request.user,
-            form.cleaned_data["reason"],
+            reason,
         )
         messages.success(request, f"已将 {deleted} 条投递记录移入回收站。")
         return redirect("recruitment:position_detail", pk=position.pk)
@@ -320,6 +327,16 @@ def bulk_delete_applications(request, position_id):
             "form": form,
         },
     )
+
+
+@login_required
+def delete_position_view(request, pk):
+    position = get_object_or_404(Position, pk=pk)
+    if request.method == "POST":
+        position_name = delete_position(position, request.user)
+        messages.success(request, f"岗位“{position_name}”及其所有配置和投递数据已成功删除。")
+        return redirect("recruitment:position_list")
+    return redirect("recruitment:position_detail", pk=position.pk)
 
 
 @login_required

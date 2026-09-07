@@ -17,6 +17,7 @@ from recruitment.models import (
     DocumentPosition,
     Position,
     PositionConfiguration,
+    PositionJdDecision,
     ReferenceDocument,
 )
 from recruitment.services.common import record_audit
@@ -26,6 +27,7 @@ from recruitment.services.configuration import (
     configuration_state,
     delete_jd_decision,
     ensure_position_configuration,
+    switch_current_jd,
 )
 from recruitment.services.pinyin import name_to_reviewer_email
 from recruitment.services.reference_import import (
@@ -485,5 +487,21 @@ def configuration_delete_jd(request, pk, decision_pk):
             else:
                 messages.error(request, err_msg)
     return redirect("recruitment:configuration_detail", pk=position.pk)
+
+
+@login_required
+def configuration_switch_jd(request, pk, decision_pk):
+    position = get_object_or_404(Position, pk=pk)
+    decision = get_object_or_404(
+        PositionJdDecision, pk=decision_pk, position=position
+    )
+    if request.method == "POST":
+        try:
+            switch_current_jd(position, decision, request.user)
+            messages.success(request, f"已成功切换为岗位说明历史版本 V{decision.version}，关联评估规则已自动采用。")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+    return redirect("recruitment:configuration_detail", pk=position.pk)
+
 
 

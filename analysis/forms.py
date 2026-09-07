@@ -33,7 +33,9 @@ class PositionRuleForm(forms.ModelForm):
             return []
         normalized = []
         for index, item in enumerate(value, start=1):
-            if not isinstance(item, dict):
+            if isinstance(item, str):
+                item = {"name": item.strip(), "description": ""}
+            elif not isinstance(item, dict):
                 self.add_error(field_name, f"第 {index} 项{item_label}格式无法识别。")
                 continue
             name = str(item.get("name", "")).strip()

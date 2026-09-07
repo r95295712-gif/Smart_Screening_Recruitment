@@ -676,8 +676,19 @@ def interview_update_api(request, pk):
 def interview_delete(request, pk):
     interview = get_object_or_404(TalentInterview, pk=pk)
     if request.method == "POST":
+        candidate_name = interview.candidate.name if interview.candidate else ""
         interview.delete()
         record_audit(request.user, "talent_interview.delete", interview)
+        if (
+            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            or "application/json" in request.headers.get("Accept", "")
+        ):
+            return JsonResponse(
+                {"ok": True, "message": f"候选人 {candidate_name} 的面试记录已删除。"}
+            )
         messages.success(request, "面试记录已删除。")
+        referer = request.META.get("HTTP_REFERER")
+        if referer:
+            return redirect(referer)
     return redirect("talent_pool:interview_list")
 

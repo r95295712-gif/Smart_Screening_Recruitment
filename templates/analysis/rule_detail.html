@@ -27,11 +27,11 @@
 <div class="rule-detail-grid">
   <section class="panel">
     <div class="panel-header"><h2>硬性要求</h2></div>
-    <div class="rule-read-list">{% for item in rule.hard_requirements %}<article><strong>{{ item.name }}</strong><p>{{ item.description|default:"-" }}</p></article>{% empty %}<div class="empty">未配置硬性要求。</div>{% endfor %}</div>
+    <div class="rule-read-list">{% for item in rule.hard_requirements %}<article><strong>{% if item.name %}{{ item.name }}{% else %}{{ item }}{% endif %}</strong>{% if item.description %}<p>{{ item.description }}</p>{% endif %}</article>{% empty %}<div class="empty">未配置硬性要求。</div>{% endfor %}</div>
   </section>
   <section class="panel">
     <div class="panel-header"><h2>加分项</h2></div>
-    <div class="rule-read-list">{% for item in rule.bonus_items %}<article><strong>{{ item.name }}</strong><p>{{ item.description|default:"-" }}</p></article>{% empty %}<div class="empty">未配置加分项。</div>{% endfor %}</div>
+    <div class="rule-read-list">{% for item in rule.bonus_items %}<article><strong>{% if item.name %}{{ item.name }}{% else %}{{ item }}{% endif %}</strong>{% if item.description %}<p>{{ item.description }}</p>{% endif %}</article>{% empty %}<div class="empty">未配置加分项。</div>{% endfor %}</div>
   </section>
 </div>
 

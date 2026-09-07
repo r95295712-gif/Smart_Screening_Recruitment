@@ -18,7 +18,7 @@
     {% csrf_token %}
     {% for application_id in application_ids %}<input type="hidden" name="application_ids" value="{{ application_id }}">{% endfor %}
     <input type="hidden" name="confirmed" value="1">
-    {{ form.as_div }}
+    <p><label for="id_reason">删除原因（选填）：</label>{{ form.reason }}</p>
     <div class="actions">
       <button class="button danger" type="submit">确认批量删除</button>
       <a class="button secondary" href="{% url 'recruitment:position_detail' position.pk %}">取消</a>

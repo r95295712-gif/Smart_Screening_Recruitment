@@ -1084,6 +1084,76 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(r1.status, PositionRuleVersion.Status.PUBLISHED)
         self.assertEqual(r2.status, PositionRuleVersion.Status.ARCHIVED)
 
+    def test_switch_current_jd_service_and_endpoint(self):
+        from recruitment.services.configuration import switch_current_jd
+
+        d1 = confirm_jd(self.position, PositionJdDecision.DecisionType.BEISEN, self.hr)
+        r1 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=1,
+            jd_decision=d1,
+            evaluation_jd=d1.confirmed_jd,
+            source_jd_snapshot=d1.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r1.publish(self.hr)
+
+        d2 = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.MANUAL,
+            self.hr,
+            confirmed_jd="新版JD内容",
+        )
+        r2 = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=2,
+            jd_decision=d2,
+            evaluation_jd=d2.confirmed_jd,
+            source_jd_snapshot=d2.confirmed_jd,
+            status=PositionRuleVersion.Status.DRAFT,
+            created_by=self.hr,
+        )
+        r2.publish(self.hr)
+
+        # 1. Service direct switch to d1
+        switch_current_jd(self.position, d1, self.hr)
+        d1.refresh_from_db()
+        d2.refresh_from_db()
+        self.assertTrue(d1.is_current)
+        self.assertFalse(d2.is_current)
+        self.position.refresh_from_db()
+        self.assertEqual(self.position.evaluation_jd, d1.confirmed_jd)
+
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        self.assertEqual(r1.status, PositionRuleVersion.Status.PUBLISHED)
+        self.assertEqual(r2.status, PositionRuleVersion.Status.ARCHIVED)
+
+        # 2. View endpoint switch back to d2
+        client = self.authenticated_client(self.hr)
+        res = client.post(
+            reverse("recruitment:configuration_switch_jd", args=[self.position.pk, d2.pk])
+        )
+        self.assertEqual(res.status_code, 302)
+        d1.refresh_from_db()
+        d2.refresh_from_db()
+        self.assertFalse(d1.is_current)
+        self.assertTrue(d2.is_current)
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        self.assertEqual(r1.status, PositionRuleVersion.Status.ARCHIVED)
+        self.assertEqual(r2.status, PositionRuleVersion.Status.PUBLISHED)
+
+        # 3. Newline normalization in confirm_jd does not duplicate versions
+        d2_again = confirm_jd(
+            self.position,
+            PositionJdDecision.DecisionType.MANUAL,
+            self.hr,
+            confirmed_jd="新版JD内容\r\n",
+        )
+        self.assertEqual(d2_again.pk, d2.pk)
+
     def test_jd_decision_deletion_and_protection(self):
         from recruitment.services.configuration import delete_jd_decision
 
@@ -1301,5 +1371,57 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
         self.assertContains(response, 'class="jd-middle-toolbar"')
         self.assertContains(response, 'id="jd-textarea-loading-overlay"')
         self.assertContains(response, 'class="jd-loading-spinner"')
+
+    def test_validate_rule_payload_normalization_and_detail_rendering(self):
+        from analysis.services.rules import validate_rule_payload
+        raw_payload = {
+            "evaluation_jd": "测试JD",
+            "hard_requirements": [
+                "计算机及相关专业学历",
+                {"name": "英语要求", "description": "CET-4以上"},
+            ],
+            "bonus_items": [
+                "具备跨境电商平台经验",
+            ],
+            "dimensions": [
+                {"name": "专业能力", "weight": 60, "description": "核心技能"},
+                {"name": "综合素质", "weight": 40, "description": "沟通协作"},
+            ],
+            "rating_thresholds": {"priority": 80, "review": 60},
+        }
+        normalized = validate_rule_payload(raw_payload)
+        self.assertEqual(
+            normalized["hard_requirements"],
+            [
+                {"name": "计算机及相关专业学历", "description": ""},
+                {"name": "英语要求", "description": "CET-4以上"},
+            ],
+        )
+        self.assertEqual(
+            normalized["bonus_items"],
+            [
+                {"name": "具备跨境电商平台经验", "description": ""},
+            ],
+        )
+
+        rule = PositionRuleVersion.objects.create(
+            position=self.position,
+            version=99,
+            status=PositionRuleVersion.Status.PUBLISHED,
+            evaluation_jd="测试JD",
+            hard_requirements=normalized["hard_requirements"],
+            bonus_items=normalized["bonus_items"],
+            dimensions=normalized["dimensions"],
+            rating_thresholds=normalized["rating_thresholds"],
+            created_by=self.hr,
+        )
+        client = self.authenticated_client(self.hr)
+        res = client.get(reverse("analysis:rule_detail", args=[rule.pk]))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "计算机及相关专业学历")
+        self.assertContains(res, "英语要求")
+        self.assertContains(res, "CET-4以上")
+        self.assertContains(res, "具备跨境电商平台经验")
+
 
 

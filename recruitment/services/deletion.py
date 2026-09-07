@@ -7,6 +7,7 @@ from recruitment.services.common import record_audit
 
 @transaction.atomic
 def soft_delete_application(application, actor, reason=""):
+    reason = reason or "用户直接删除"
     application.soft_delete(actor, reason)
     from reviews.services import withdraw_application_from_open_reviews
 
@@ -62,3 +63,41 @@ def purge_expired_applications(now=None):
             candidate.delete()
         purged += 1
     return purged
+
+
+@transaction.atomic
+def delete_position(position, actor=None):
+    from analysis.models import AnalysisItem, AnalysisJob
+    from reviews.models import ReviewBatch, ReviewItem
+    from recruitment.models import Candidate, Application
+    from talent_pool.models import TalentMembership
+
+    ReviewItem.objects.filter(application__position=position).delete()
+    ReviewBatch.objects.filter(position=position).delete()
+
+    AnalysisItem.objects.filter(application__position=position).delete()
+    AnalysisJob.objects.filter(position=position).delete()
+
+    applications = list(Application.objects.filter(position=position))
+    candidate_ids = [app.candidate_id for app in applications]
+    Application.objects.filter(position=position).delete()
+
+    for candidate_id in set(candidate_ids):
+        has_other_apps = Application.objects.filter(candidate_id=candidate_id).exists()
+        has_membership = TalentMembership.objects.filter(
+            candidate_id=candidate_id,
+            status__in=[
+                TalentMembership.Status.ACTIVE,
+                TalentMembership.Status.STALE,
+                TalentMembership.Status.REMOVED_PENDING,
+            ],
+        ).exists()
+        if not has_other_apps and not has_membership:
+            Candidate.objects.filter(pk=candidate_id).delete()
+
+    if actor:
+        record_audit(actor, "position.delete", position, {"position_name": position.name})
+
+    position_name = position.name
+    position.delete()
+    return position_name
