@@ -181,6 +181,7 @@ class TalentInterview(models.Model):
     result = models.CharField(max_length=64, default="未面试", db_index=True)
     notes = models.TextField(blank=True)
     channel = models.CharField(max_length=128, blank=True, db_index=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 

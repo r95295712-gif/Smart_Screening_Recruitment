@@ -473,7 +473,11 @@ def interview_list(request):
     backfill_talent_interviews()
     form = TalentInterviewFilterForm(request.GET or None)
 
-    interviews = TalentInterview.objects.select_related("candidate", "membership").all()
+    interviews = (
+        TalentInterview.objects.filter(is_deleted=False)
+        .select_related("candidate", "membership")
+        .all()
+    )
 
     if form.is_valid():
         q = form.cleaned_data.get("q")
@@ -547,24 +551,24 @@ def interview_list(request):
     all_positions = sorted(
         set(
             p.strip()
-            for p in TalentInterview.objects.exclude(position_name="").values_list(
-                "position_name", flat=True
-            )
+            for p in TalentInterview.objects.filter(is_deleted=False)
+            .exclude(position_name="")
+            .values_list("position_name", flat=True)
             if p and p.strip()
         )
     )
     first_ints = [
         x.strip()
-        for x in TalentInterview.objects.exclude(first_interviewer="").values_list(
-            "first_interviewer", flat=True
-        )
+        for x in TalentInterview.objects.filter(is_deleted=False)
+        .exclude(first_interviewer="")
+        .values_list("first_interviewer", flat=True)
         if x and x.strip()
     ]
     second_ints = [
         x.strip()
-        for x in TalentInterview.objects.exclude(second_interviewer="").values_list(
-            "second_interviewer", flat=True
-        )
+        for x in TalentInterview.objects.filter(is_deleted=False)
+        .exclude(second_interviewer="")
+        .values_list("second_interviewer", flat=True)
         if x and x.strip()
     ]
     all_interviewers = sorted(set(first_ints + second_ints))
@@ -677,7 +681,8 @@ def interview_delete(request, pk):
     interview = get_object_or_404(TalentInterview, pk=pk)
     if request.method == "POST":
         candidate_name = interview.candidate.name if interview.candidate else ""
-        interview.delete()
+        interview.is_deleted = True
+        interview.save(update_fields=["is_deleted"])
         record_audit(request.user, "talent_interview.delete", interview)
         if (
             request.headers.get("x-requested-with") == "XMLHttpRequest"

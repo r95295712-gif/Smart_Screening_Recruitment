@@ -53,6 +53,19 @@ def add_custom_result_option(name):
 
 def ensure_talent_interview(membership):
     candidate = membership.candidate
+    existing = TalentInterview.objects.filter(candidate=candidate).first()
+    if existing:
+        # If user explicitly deleted this interview record, do not resurrect it
+        if existing.is_deleted:
+            return None
+        updates = []
+        if not existing.membership:
+            existing.membership = membership
+            updates.append("membership")
+        if updates:
+            existing.save(update_fields=updates)
+        return existing
+
     position_name = membership.position.name if membership.position else ""
     channel = ""
     latest_app = (
@@ -66,29 +79,14 @@ def ensure_talent_interview(membership):
         if latest_app.source_channel:
             channel = latest_app.source_channel
 
-    interview, created = TalentInterview.objects.get_or_create(
+    return TalentInterview.objects.create(
         candidate=candidate,
-        defaults={
-            "membership": membership,
-            "position_name": position_name,
-            "channel": channel,
-            "result": "未面试",
-        },
+        membership=membership,
+        position_name=position_name,
+        channel=channel,
+        result="未面试",
+        is_deleted=False,
     )
-    if not created:
-        updates = []
-        if not interview.membership:
-            interview.membership = membership
-            updates.append("membership")
-        if not interview.position_name and position_name:
-            interview.position_name = position_name
-            updates.append("position_name")
-        if not interview.channel and channel:
-            interview.channel = channel
-            updates.append("channel")
-        if updates:
-            interview.save(update_fields=updates)
-    return interview
 
 
 def backfill_talent_interviews():

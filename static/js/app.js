@@ -502,7 +502,7 @@ document.addEventListener("submit", (event) => {
     submitPageForm(form, event.submitter);
     return;
   }
-  if (form.dataset.noLoading !== undefined) return;
+  if (form.dataset.noLoading !== undefined || event.defaultPrevented) return;
 
   const submitter = event.submitter;
   const message =

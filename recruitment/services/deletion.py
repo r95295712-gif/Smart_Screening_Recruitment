@@ -69,7 +69,7 @@ def purge_expired_applications(now=None):
 def delete_position(position, actor=None):
     from analysis.models import AnalysisItem, AnalysisJob
     from reviews.models import ReviewBatch, ReviewItem
-    from recruitment.models import Candidate, Application
+    from recruitment.models import Application
     from talent_pool.models import TalentMembership
 
     ReviewItem.objects.filter(application__position=position).delete()
@@ -78,22 +78,11 @@ def delete_position(position, actor=None):
     AnalysisItem.objects.filter(application__position=position).delete()
     AnalysisJob.objects.filter(position=position).delete()
 
-    applications = list(Application.objects.filter(position=position))
-    candidate_ids = [app.candidate_id for app in applications]
-    Application.objects.filter(position=position).delete()
+    # Clear position reference in talent memberships if any were sourced from this position
+    TalentMembership.objects.filter(position=position).update(position=None)
 
-    for candidate_id in set(candidate_ids):
-        has_other_apps = Application.objects.filter(candidate_id=candidate_id).exists()
-        has_membership = TalentMembership.objects.filter(
-            candidate_id=candidate_id,
-            status__in=[
-                TalentMembership.Status.ACTIVE,
-                TalentMembership.Status.STALE,
-                TalentMembership.Status.REMOVED_PENDING,
-            ],
-        ).exists()
-        if not has_other_apps and not has_membership:
-            Candidate.objects.filter(pk=candidate_id).delete()
+    # Delete applications belonging to this position
+    Application.objects.filter(position=position).delete()
 
     if actor:
         record_audit(actor, "position.delete", position, {"position_name": position.name})

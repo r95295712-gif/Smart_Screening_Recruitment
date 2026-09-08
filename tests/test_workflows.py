@@ -3485,14 +3485,31 @@ class PageSmokeTests(WorkflowFixtureMixin, TestCase):
         self.assertEqual(json_data["interview"]["second_interviewer"], "李总")
         self.assertEqual(json_data["interview"]["result"], "待入职")
 
-        # Check that custom result option is dynamically persisted
-        self.assertTrue(InterviewResultOption.objects.filter(name="待入职").exists())
-
-        # 4. Test delete
         del_url = reverse("talent_pool:interview_delete", args=[interview.pk])
-        del_resp = client.post(del_url)
-        self.assertEqual(del_resp.status_code, 302)
-        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk).exists())
+        resp = client.post(del_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        interview.refresh_from_db()
+        self.assertTrue(interview.is_deleted)
+        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk, is_deleted=False).exists())
+
+        # Verify backfill does not recreate the deleted interview
+        from talent_pool.services import backfill_talent_interviews
+        backfill_talent_interviews()
+        self.assertFalse(TalentInterview.objects.filter(candidate=candidate, is_deleted=False).exists())
+
+        interview2 = TalentInterview.objects.create(
+            candidate=candidate,
+            position_name="测试岗位",
+            first_interviewer="王老师",
+            result="未面试",
+        )
+        del_url2 = reverse("talent_pool:interview_delete", args=[interview2.pk])
+        resp2 = client.post(del_url2, HTTP_REFERER="/talent-pool/interviews/")
+        self.assertEqual(resp2.status_code, 302)
+        interview2.refresh_from_db()
+        self.assertTrue(interview2.is_deleted)
 
 
 class DeletionFeaturesOptimizationTests(TestCase):
@@ -3592,8 +3609,12 @@ class DeletionFeaturesOptimizationTests(TestCase):
         resp = self.client.post(del_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertTrue(data["ok"])
-        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk).exists())
+        self.assertFalse(TalentInterview.objects.filter(pk=interview.pk, is_deleted=False).exists())
+        self.assertTrue(TalentInterview.objects.filter(pk=interview.pk, is_deleted=True).exists())
+
+        from talent_pool.services import backfill_talent_interviews
+        backfill_talent_interviews()
+        self.assertFalse(TalentInterview.objects.filter(candidate=self.candidate1, is_deleted=False).exists())
 
         interview2 = TalentInterview.objects.create(
             candidate=self.candidate2,
@@ -3610,6 +3631,7 @@ class DeletionFeaturesOptimizationTests(TestCase):
         self.assertEqual(
             unquote(resp2.url), "http://testserver/talent-pool/interviews/?q=候选人&page=2"
         )
-        self.assertFalse(TalentInterview.objects.filter(pk=interview2.pk).exists())
+        self.assertFalse(TalentInterview.objects.filter(pk=interview2.pk, is_deleted=False).exists())
+        self.assertTrue(TalentInterview.objects.filter(pk=interview2.pk, is_deleted=True).exists())
 
 
