@@ -7,7 +7,7 @@
   <div class="actions">
     <a class="button secondary" href="{% url 'recruitment:configuration_detail' position.pk %}">岗位配置</a>
     <form method="post" action="{% url 'recruitment:set_position_status' position.pk %}" style="margin: 0; display: inline;">{% csrf_token %}{% if position.status == "active" %}<input type="hidden" name="status" value="historical"><button class="button secondary" type="submit">设为历史岗位</button>{% else %}<input type="hidden" name="status" value="active"><button class="button secondary" type="submit">临时启用岗位</button>{% endif %}</form>
-    <form method="post" action="{% url 'recruitment:delete_position' position.pk %}" onsubmit="return confirm('确定要删除岗位“{{ position.name }}”及其所有的配置、规则和投递数据吗？此操作不可逆！');" style="margin: 0; display: inline;">{% csrf_token %}<button class="button danger" type="submit">删除岗位</button></form>
+    <form method="post" action="{% url 'recruitment:delete_position' position.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除岗位“{{ position.name|escapejs }}”及其所有的配置、规则和投递数据吗？此操作不可逆！');" style="margin: 0; display: inline;">{% csrf_token %}<button class="button danger" type="submit">删除岗位</button></form>
   </div>
 </div>
 <section class="configuration-banner {% if configuration_state.can_analyze %}ready{% endif %}">

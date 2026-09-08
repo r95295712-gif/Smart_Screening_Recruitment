@@ -67,7 +67,7 @@
                   <input type="text" name="name" value="{{ tag.name }}" required maxlength="100" style="max-width: 140px; padding: 4px 8px; font-size: 13px;">
                   <button class="link-button" type="submit">重命名</button>
                 </form>
-                <form method="post" action="{% url 'talent_pool:delete_tag' tag.pk %}" onsubmit="return confirm('确定要删除标签「{{ tag.name }}」吗？删除后将从所有候选人中解除关联。');">
+                <form method="post" action="{% url 'talent_pool:delete_tag' tag.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除标签「{{ tag.name|escapejs }}」吗？删除后将从所有候选人中解除关联。');">
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
                   <button class="link-button danger" type="submit">删除</button>

@@ -16,7 +16,7 @@
           <button class="button secondary danger small" type="submit">取消任务</button>
         </form>
       {% else %}
-        <form method="post" action="{% url 'analysis:job_delete' job.pk %}" onsubmit="return confirm('确定要删除此条分析任务记录吗？');" style="display: inline;">
+        <form method="post" action="{% url 'analysis:job_delete' job.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条分析任务记录吗？');" style="display: inline;">
           {% csrf_token %}
           <button class="button danger small" type="submit">删除任务</button>
         </form>

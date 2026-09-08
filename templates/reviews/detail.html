@@ -10,7 +10,7 @@
       <button class="button secondary small" type="button" onclick="navigator.clipboard.writeText('{{ review_url|escapejs }}').then(() => alert('审核链接已复制到剪贴板！'))">复制审核链接</button>
     {% endif %}
     <a class="button secondary small" href="javascript:location.reload();">刷新</a>
-    <form method="post" action="{% url 'reviews:delete' batch.pk %}" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
+    <form method="post" action="{% url 'reviews:delete' batch.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
       {% csrf_token %}
       <button class="button danger small" type="submit">删除审核批次</button>
     </form>

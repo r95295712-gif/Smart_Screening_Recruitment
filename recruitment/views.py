@@ -4,6 +4,7 @@ from datetime import datetime
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Prefetch, Q
+from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -336,7 +337,7 @@ def delete_position_view(request, pk):
         position_name = delete_position(position, request.user)
         messages.success(request, f"岗位“{position_name}”及其所有配置和投递数据已成功删除。")
         return redirect("recruitment:position_list")
-    return redirect("recruitment:position_detail", pk=position.pk)
+    return HttpResponseNotAllowed(["POST"])
 
 
 @login_required

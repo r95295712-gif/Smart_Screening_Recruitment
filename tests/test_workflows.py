@@ -3565,6 +3565,9 @@ class DeletionFeaturesOptimizationTests(TestCase):
         )
 
         delete_url = reverse("recruitment:delete_position", args=[self.position.pk])
+        get_resp = self.client.get(delete_url)
+        self.assertEqual(get_resp.status_code, 405)
+
         resp = self.client.post(delete_url)
         self.assertEqual(resp.status_code, 302)
         self.assertRedirects(resp, reverse("recruitment:position_list"))

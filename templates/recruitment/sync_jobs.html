@@ -154,7 +154,7 @@
                   <button class="link-button danger" type="submit">取消任务</button>
                 </form>
               {% else %}
-                <form method="post" action="{% url 'recruitment:delete_sync_job' job.pk %}" onsubmit="return confirm('确定要删除此条同步任务记录吗？');" style="display: inline;">
+                <form method="post" action="{% url 'recruitment:delete_sync_job' job.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条同步任务记录吗？');" style="display: inline;">
                   {% csrf_token %}
                   <button class="link-button danger" type="submit">删除</button>
                 </form>

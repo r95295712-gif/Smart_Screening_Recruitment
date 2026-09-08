@@ -46,11 +46,11 @@
           <td>
             {% if initialization.status == "failed" %}
               <form method="post" action="{% url 'recruitment:retry_position_initialization' job.pk initialization.pk %}" style="display: inline;">{% csrf_token %}<button class="link-button" type="submit">重新生成</button></form>
-              <form method="post" action="{% url 'recruitment:delete_position_initialization' job.pk initialization.pk %}" onsubmit="return confirm('确定要删除此条初始化记录吗？');" style="display: inline; margin-left: 8px;">{% csrf_token %}<button class="link-button danger" type="submit">删除</button></form>
+              <form method="post" action="{% url 'recruitment:delete_position_initialization' job.pk initialization.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条初始化记录吗？');" style="display: inline; margin-left: 8px;">{% csrf_token %}<button class="link-button danger" type="submit">删除</button></form>
             {% elif initialization.status == "queued" or initialization.status == "running" %}
               <form method="post" action="{% url 'recruitment:cancel_position_initialization' job.pk initialization.pk %}">{% csrf_token %}<button class="link-button" type="submit">取消任务</button></form>
             {% else %}
-              <form method="post" action="{% url 'recruitment:delete_position_initialization' job.pk initialization.pk %}" onsubmit="return confirm('确定要删除此条初始化记录吗？');" style="display: inline;">{% csrf_token %}<button class="link-button danger" type="submit">删除</button></form>
+              <form method="post" action="{% url 'recruitment:delete_position_initialization' job.pk initialization.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条初始化记录吗？');" style="display: inline;">{% csrf_token %}<button class="link-button danger" type="submit">删除</button></form>
             {% endif %}
           </td>
         </tr>

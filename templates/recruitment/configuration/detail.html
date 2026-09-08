@@ -126,7 +126,7 @@
           </form>
           {% endif %}
           {% if rule.status != "published" %}
-          <form method="post" action="{% url 'analysis:rule_delete' rule.pk %}" onsubmit="return confirm('确定要删除岗位规则 V{{ rule.version }} 吗？');" style="margin: 0;">
+          <form method="post" action="{% url 'analysis:rule_delete' rule.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除岗位规则 V{{ rule.version }} 吗？');" style="margin: 0;">
             {% csrf_token %}
             <button type="submit" class="link-button danger small" style="color: var(--danger, #ef4444); cursor: pointer; padding: 4px 8px; font-size: 13px;">
               删除
@@ -204,7 +204,7 @@
               载入编辑
             </button>
             {% if not dec.is_current %}
-            <form method="post" action="{% url 'recruitment:configuration_delete_jd' position.pk dec.pk %}" onsubmit="return confirm('确定要删除岗位说明历史版本 V{{ dec.version }} 吗？');" style="margin: 0;">
+            <form method="post" action="{% url 'recruitment:configuration_delete_jd' position.pk dec.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除岗位说明历史版本 V{{ dec.version }} 吗？');" style="margin: 0;">
               {% csrf_token %}
               <button type="submit" class="link-button danger small" style="color: var(--danger, #ef4444); cursor: pointer; padding: 4px 8px; font-size: 13px;">
                 删除

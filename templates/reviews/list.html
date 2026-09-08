@@ -63,7 +63,7 @@
               <button class="button secondary danger mini" type="submit">撤销</button>
             </form>
           {% endif %}
-          <form method="post" action="{% url 'reviews:delete' batch.pk %}" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
+          <form method="post" action="{% url 'reviews:delete' batch.pk %}" data-full-submit="true" onsubmit="return confirm('确定要删除此条审核批次记录吗？');" style="display: inline;">
             {% csrf_token %}
             <button class="button danger mini" type="submit">删除</button>
           </form>
