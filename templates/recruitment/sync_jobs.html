@@ -14,6 +14,7 @@
       {% endfor %}
     </select>
     <button class="button primary" type="submit">立即同步</button>
+    <button class="button secondary" type="button" data-silent-refresh="sync-jobs">刷新进度</button>
   </form>
 </div>
 
@@ -27,7 +28,13 @@
 <div data-refresh-region="sync-jobs">
   {% if has_active_jobs %}
   <section class="panel task-progress-panel">
-    <div class="progress-summary"><strong>同步或岗位初始化任务正在执行</strong><span>静默处理中</span></div>
+    <div class="progress-summary">
+      <strong>同步或岗位初始化任务正在执行</strong>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span>静默处理中</span>
+        <button class="button secondary small" type="button" data-silent-refresh="sync-jobs" style="padding: 2px 10px; font-size: 12px;">刷新进度</button>
+      </div>
+    </div>
     <div class="progress-track indeterminate"><span></span></div>
     <p class="muted">北森数据同步与岗位规则 V0 生成在后台执行中，可点击右上角按钮随时刷新查看最新状态。</p>
   </section>
@@ -40,6 +47,7 @@
         <span class="muted" style="font-size: 13px;">定时增量巡检仅在检测到数据变动或异常时保留记录</span>
       </div>
       <div class="actions">
+        <button class="button secondary small" type="button" data-silent-refresh="sync-jobs">刷新进度</button>
         {% if jobs %}
         <form method="post" action="{% url 'recruitment:clear_sync_jobs' %}" onsubmit="return confirm('确定要清空所有已结束的历史同步任务记录吗？');" style="margin: 0;">
           {% csrf_token %}

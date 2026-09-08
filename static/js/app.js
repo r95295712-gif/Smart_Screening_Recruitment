@@ -365,7 +365,7 @@ async function submitAsyncForm(form, submitter) {
     showInlineFeedback(form, payload.message || "操作已完成。", response.ok && payload.ok);
     if (response.ok && payload.ok) {
       if (payload.reload || payload.redirect_url) {
-        window.location.href = payload.redirect_url || window.location.href;
+        window.location.assign(payload.redirect_url || window.location.href);
         return;
       }
       updateConfigurationState(payload.state, payload.reference_position);

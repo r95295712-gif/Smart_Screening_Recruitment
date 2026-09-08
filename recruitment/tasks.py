@@ -1,7 +1,10 @@
+import logging
 from datetime import timedelta
 
 from celery import shared_task
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 from recruitment.integrations.italent import ITalentClient
 from recruitment.models import (
@@ -113,6 +116,14 @@ def purge_deleted_applications_task():
 
 
 def create_scheduled_sync(sync_type, start, end):
+    if SyncJob.objects.filter(
+        status__in=[SyncJob.Status.PENDING, SyncJob.Status.RUNNING]
+    ).exists():
+        logger.info(
+            "已有同步任务正在执行中，跳过本次定时同步调度（类型：%s）以避免并发冲突。",
+            sync_type,
+        )
+        return None
     job = SyncJob.objects.create(
         sync_type=sync_type,
         window_start=start,

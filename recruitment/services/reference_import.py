@@ -148,19 +148,22 @@ def parse_reviewer_mapping_xlsx(content):
                 index
                 for index, value in enumerate(headers)
                 if ("岗位" in value or "职位" in value)
-                and not any(k in value for k in ("ID", "说明", "JD", "状态", "相似度"))
+                and not any(k in value for k in ("ID", "说明", "JD", "状态", "相似度", "分", "备注", "处理", "决策"))
             ]
             owner_column = next(
-                (index for index, value in enumerate(headers) if "负责人" in value and "邮箱" not in value and "HR" not in value),
+                (index for index, value in enumerate(headers)
+                 if "负责人" in value and not any(k in value for k in ("邮箱", "HR", "岗位", "职位", "关联", "说明", "ID", "备注", "决策", "分"))),
                 None,
             )
             if owner_column is None:
                 owner_column = next(
-                    (index for index, value in enumerate(headers) if "负责人" in value and "邮箱" not in value),
+                    (index for index, value in enumerate(headers)
+                     if "负责人" in value and not any(k in value for k in ("邮箱", "HR", "岗位", "职位", "说明"))),
                     None,
                 )
             email_column = next(
-                (index for index, value in enumerate(headers) if "邮箱" in value and "HR" not in value),
+                (index for index, value in enumerate(headers)
+                 if "邮箱" in value and not any(k in value for k in ("HR", "岗位", "职位"))),
                 None,
             )
             if email_column is None:
@@ -259,29 +262,7 @@ def create_reference_document(uploaded_file, document_type, actor):
     return reference
 
 
-def _mapping_for_document_position(document_position, position=None):
-    targets = set()
-    if document_position:
-        clean_title = clean_position_title(document_position.title)
-        targets.add(normalize_position_title(clean_title))
-        for alias in document_position.aliases or []:
-            clean_alias = clean_position_title(alias)
-            targets.add(normalize_position_title(clean_alias))
-    if position:
-        targets.add(normalize_position_title(position.name))
-        for alias in split_values(position.name):
-            targets.add(normalize_position_title(alias))
-
-    if not targets:
-        return None
-
-    mappings = list(
-        DocumentPosition.objects.filter(
-            reference_document__document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
-            reference_document__status=ReferenceDocument.Status.ACTIVE,
-            is_active=True,
-        )
-    )
+def _match_mapping(targets, mappings):
     # 1. Exact match
     for mapping in mappings:
         mapping_names = {
@@ -314,7 +295,50 @@ def _mapping_for_document_position(document_position, position=None):
     return None
 
 
+def _mapping_for_document_position(document_position, position=None):
+    mappings = list(
+        DocumentPosition.objects.filter(
+            reference_document__document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
+            reference_document__status=ReferenceDocument.Status.ACTIVE,
+            is_active=True,
+        )
+    )
+    if not mappings:
+        return None
+
+    # 优先使用用户匹配的参考资料岗位精准查找负责人
+    if document_position:
+        doc_targets = set()
+        clean_title = clean_position_title(document_position.title)
+        doc_targets.add(normalize_position_title(clean_title))
+        for alias in document_position.aliases or []:
+            clean_alias = clean_position_title(alias)
+            doc_targets.add(normalize_position_title(clean_alias))
+        matched = _match_mapping(doc_targets, mappings)
+        if matched:
+            return matched
+
+    # 次选使用岗位自身的名称查找
+    if position:
+        pos_targets = set()
+        pos_targets.add(normalize_position_title(position.name))
+        for alias in split_values(position.name):
+            pos_targets.add(normalize_position_title(alias))
+        return _match_mapping(pos_targets, mappings)
+
+    return None
+
+
 def apply_document_reviewers(configuration, actor):
+    # 覆盖旧的文档匹配负责人，确保每次重匹配都是最新的负责人列表，而非累加
+    PositionReviewer.objects.filter(
+        position=configuration.position,
+        source_type=PositionReviewer.SourceType.DOCUMENT,
+    ).delete()
+
+    if not configuration.document_position:
+        return 0
+
     mapping = _mapping_for_document_position(
         configuration.document_position,
         position=configuration.position,

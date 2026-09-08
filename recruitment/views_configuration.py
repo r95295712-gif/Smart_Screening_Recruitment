@@ -53,7 +53,7 @@ def _form_error_message(form):
     return "；".join(messages_list)
 
 
-def _configuration_json(position, message, *, ok=True, status=200):
+def _configuration_json(position, message, *, ok=True, status=200, reload=False):
     state = configuration_state(position)
     configuration = ensure_position_configuration(position)
     document_position = configuration.document_position
@@ -61,6 +61,7 @@ def _configuration_json(position, message, *, ok=True, status=200):
         {
             "ok": ok,
             "message": message,
+            "reload": reload,
             "state": {
                 "code": state.code,
                 "label": state.label,
@@ -248,7 +249,7 @@ def configuration_confirm_match(request, pk):
             if created:
                 message += f" 已自动带出 {created} 名负责人。"
             if _is_async_request(request):
-                return _configuration_json(position, message)
+                return _configuration_json(position, message, reload=True)
             messages.success(request, message)
         else:
             message = _form_error_message(form)

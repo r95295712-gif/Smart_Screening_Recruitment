@@ -474,6 +474,74 @@ class PositionConfigurationTests(WorkflowFixtureMixin, TestCase):
             {"吴晨静", "苏碧龙"},
         )
 
+    def test_rematch_overwrites_previous_document_reviewers_and_endpoint_reloads(self):
+        doc = ReferenceDocument.objects.create(
+            name="招聘汇总",
+            document_type=ReferenceDocument.DocumentType.JOB_SUMMARY_DOCX,
+            content_hash="summary-rematch",
+            version=3,
+            status=ReferenceDocument.Status.ACTIVE,
+            uploaded_by=self.hr,
+        )
+        dp_ai = DocumentPosition.objects.create(
+            reference_document=doc,
+            title="AI工程师",
+            jd="负责AI系统开发",
+        )
+        dp_pm = DocumentPosition.objects.create(
+            reference_document=doc,
+            title="产品经理",
+            jd="负责产品规划与推进",
+        )
+
+        mapping_doc = ReferenceDocument.objects.create(
+            name="负责人表",
+            document_type=ReferenceDocument.DocumentType.REVIEWER_MAPPING_XLSX,
+            content_hash="reviewers-rematch",
+            version=3,
+            status=ReferenceDocument.Status.ACTIVE,
+            uploaded_by=self.hr,
+        )
+        DocumentPosition.objects.create(
+            reference_document=mapping_doc,
+            title="AI工程师",
+            metadata={"reviewers": [{"name": "陈建雄", "email": "chenjianxiong@nuptio.net"}]},
+        )
+        DocumentPosition.objects.create(
+            reference_document=mapping_doc,
+            title="产品经理",
+            metadata={"reviewers": [{"name": "邵红霖", "email": "shaohonglin@nuptio.net"}]},
+        )
+
+        # 1. First match to AI工程师 via endpoint
+        client = self.authenticated_client(self.hr)
+        url = reverse("recruitment:configuration_confirm_match", args=[self.position.pk])
+        resp1 = client.post(
+            url,
+            {"document_position": dp_ai.pk, "no_match": False},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp1.status_code, 200)
+        data1 = resp1.json()
+        self.assertTrue(data1["ok"])
+        self.assertTrue(data1["reload"])
+        names1 = list(self.position.reviewer_links.filter(source_type=PositionReviewer.SourceType.DOCUMENT).values_list("reviewer__name", flat=True))
+        self.assertEqual(names1, ["陈建雄"])
+
+        # 2. Re-match to 产品经理 -> must overwrite rather than accumulate
+        resp2 = client.post(
+            url,
+            {"document_position": dp_pm.pk, "no_match": False},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp2.status_code, 200)
+        data2 = resp2.json()
+        self.assertTrue(data2["ok"])
+        self.assertTrue(data2["reload"])
+        names2 = list(self.position.reviewer_links.filter(source_type=PositionReviewer.SourceType.DOCUMENT).values_list("reviewer__name", flat=True))
+        self.assertEqual(names2, ["邵红霖"])
+        self.assertNotIn("陈建雄", names2)
+
     def test_review_is_rejected_when_position_configuration_is_incomplete(self):
         application = self.create_application(
             applicant_id="REVIEW-CONFIG",

@@ -107,7 +107,6 @@ def talent_list(request):
         page_range = []
 
     tags = TalentTag.objects.filter(is_active=True).select_related("created_by")
-    interview_count = TalentInterview.objects.count()
 
     candidate_ids = [m.candidate_id for m in page_obj.object_list]
     reports = (
@@ -135,7 +134,6 @@ def talent_list(request):
             "form": form,
             "tags": tags,
             "tag_form": TalentTagForm(),
-            "interview_count": interview_count,
         },
     )
 

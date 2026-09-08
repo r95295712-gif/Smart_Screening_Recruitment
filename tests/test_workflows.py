@@ -3634,4 +3634,43 @@ class DeletionFeaturesOptimizationTests(TestCase):
         self.assertFalse(TalentInterview.objects.filter(pk=interview2.pk, is_deleted=False).exists())
         self.assertTrue(TalentInterview.objects.filter(pk=interview2.pk, is_deleted=True).exists())
 
+    @patch("recruitment.tasks.execute_sync_job.delay")
+    def test_create_scheduled_sync_skips_when_active_sync_exists(self, mock_delay):
+        from recruitment.tasks import create_scheduled_sync
+        from recruitment.models import SyncJob
+        from django.utils import timezone
+        now = timezone.now()
+
+        # When no active sync exists, it creates job
+        job_id = create_scheduled_sync(SyncJob.SyncType.INCREMENTAL, now, now)
+        self.assertIsNotNone(job_id)
+        job = SyncJob.objects.get(pk=job_id)
+        self.assertEqual(job.status, SyncJob.Status.PENDING)
+
+        # While job is PENDING or RUNNING, subsequent scheduled sync returns None
+        skipped_job_id = create_scheduled_sync(SyncJob.SyncType.INCREMENTAL, now, now)
+        self.assertIsNone(skipped_job_id)
+
+        job.status = SyncJob.Status.RUNNING
+        job.save()
+        self.assertIsNone(create_scheduled_sync(SyncJob.SyncType.INCREMENTAL, now, now))
+
+        # Once job completes, scheduled sync can run again
+        job.status = SyncJob.Status.SUCCESS
+        job.save()
+        new_job_id = create_scheduled_sync(SyncJob.SyncType.INCREMENTAL, now, now)
+        self.assertIsNotNone(new_job_id)
+
+    def test_ui_enhancements_refresh_button_and_interview_no_count(self):
+        # 1. Talent list has clean '面试信息' button without count
+        talent_resp = self.client.get(reverse("talent_pool:list"))
+        self.assertEqual(talent_resp.status_code, 200)
+        self.assertContains(talent_resp, ">面试信息</a>")
+        self.assertNotContains(talent_resp, "面试信息 (")
+
+        # 2. Sync jobs page has '刷新进度' button
+        sync_resp = self.client.get(reverse("recruitment:sync_jobs"))
+        self.assertEqual(sync_resp.status_code, 200)
+        self.assertContains(sync_resp, "刷新进度")
+
 
